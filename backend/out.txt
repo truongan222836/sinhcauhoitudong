@@ -1,0 +1,11 @@
+Database connection failed: ConnectionError: [Microsoft][SQL Server Native Client 11.0][SQL Server]Cannot open database "HETHONGSINHCAUHOITUDONG" requested by the login. The login failed.
+    at PrivateConnection.callback2 (D:\DOAN2\HTSINHCAUHOITUDONG\sinhcauhoitudong\backend\node_modules\mssql\lib\msnodesqlv8\connection-pool.js:46:17)
+    at Immediate.<anonymous> (D:\DOAN2\HTSINHCAUHOITUDONG\sinhcauhoitudong\backend\node_modules\msnodesqlv8\lib\connection.js:47:14)
+    at process.processImmediate (node:internal/timers:485:21) {
+  code: undefined,
+  originalError: {
+    sqlState: '42000',
+    message: '[Microsoft][SQL Server Native Client 11.0][SQL Server]Cannot open database "HETHONGSINHCAUHOITUDONG" requested by the login. The login failed.',
+    code: 4060
+  }
+}

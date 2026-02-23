@@ -1,0 +1,14 @@
+# Dependencies
+/sinhcauhoitudong/frontend/node_modules/
+/sinhcauhoitudong/backend/node_modules/
+
+# Production
+/sinhcauhoitudong/frontend/build/
+
+# Misc
+.DS_Store
+.env
+npm-debug.log*
+
+# IDE config
+.vscode/
