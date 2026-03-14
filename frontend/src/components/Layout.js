@@ -2,16 +2,19 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Navbar from './Navbar';
 import Footer from './Footer';
+import Sidebar from './Sidebar';
 
 const Layout = () => {
   return (
-    <>
-      <Navbar />
-      <main style={{ padding: '20px', minHeight: '80vh' }}>
-        <Outlet /> {/* Đây là nơi nội dung của các trang con sẽ được hiển thị */}
-      </main>
-      <Footer />
-    </>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
+      <Sidebar />
+      <div style={{ flex: 1, marginLeft: '280px', display: 'flex', flexDirection: 'column' }}>
+        <Navbar />
+        <main style={{ padding: '0 30px 40px 30px', flex: 1, animation: 'fadeIn 0.5s ease' }}>
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 };
 

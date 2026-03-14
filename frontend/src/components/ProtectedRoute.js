@@ -1,12 +1,11 @@
 import React from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const ProtectedRoute = ({ allowedRoles }) => {
-    const token = localStorage.getItem('token');
-    const userString = localStorage.getItem('user');
-    const user = userString ? JSON.parse(userString) : null;
+    const { user, isAuthenticated } = useAuth();
 
-    if (!token || !user) {
+    if (!isAuthenticated || !user) {
         // Nếu không có token hoặc thông tin user, chuyển hướng về trang đăng nhập
         return <Navigate to="/login" replace />;
     }

@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const LoginForm = ({ setActiveTab }) => {
     const [formData, setFormData] = useState({ email: '', password: '' });
     const [message, setMessage] = useState('');
     const navigate = useNavigate();
+
+    const { login } = useAuth();
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -23,12 +26,11 @@ const LoginForm = ({ setActiveTab }) => {
             if (!response.ok) {
                 throw new Error(data.message || 'Đăng nhập thất bại.');
             }
-            // Best practice: Lưu token vào localStorage để duy trì đăng nhập
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
             
             setMessage('Đăng nhập thành công!');
-            navigate('/dashboard'); // Chuyển hướng tới trang dashboard
+            // Use AuthContext to login
+            login(data.user, data.token);
+            
         } catch (error) {
             setMessage(error.message);
         }

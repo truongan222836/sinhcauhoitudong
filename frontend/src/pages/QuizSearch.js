@@ -5,17 +5,29 @@ const QuizSearch = () => {
   const [quizCode, setQuizCode] = useState('');
   const navigate = useNavigate();
 
-  const handleSearch = () => {
-    // Basic validation
+  const handleSearch = async () => {
     if (!quizCode) {
       alert('Vui lòng nhập mã đề thi.');
       return;
     }
 
-    // In a real application, you would fetch quiz details from an API
-    // For this example, we'll simply navigate to the exam page with the entered code
-    // Assuming the exam page route is /exam/:quizCode
-    navigate(`/exam/${quizCode}`);
+    try {
+      const response = await fetch(`http://localhost:3000/api/quizzes/code/${quizCode}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Không tìm thấy đề thi.');
+      }
+
+      // Navigate with DeThiId instead of code
+      navigate(`/exam/${data.data.DeThiId}`);
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   return (
