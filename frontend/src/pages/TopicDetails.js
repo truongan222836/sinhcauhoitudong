@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import StartExamModal from '../components/StartExamModal';
 
 const TopicDetails = () => {
   const { id } = useParams(); // actually this is topic name like "Toán Cao Cấp"
@@ -7,6 +8,8 @@ const TopicDetails = () => {
   const [quizzes, setQuizzes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
 
   useEffect(() => {
     fetchQuizzesByTopic();
@@ -81,9 +84,19 @@ const TopicDetails = () => {
                     </div>
                   </div>
                   
-                  <Link to={isStudent ? `/exam/${quiz.DeThiId}` : "/manage"} className="btn btn-primary" style={{ width: '100%', borderRadius: '14px', padding: '12px' }}>
-                    {isStudent ? 'Làm bài' : 'Xem đề'}
-                  </Link>
+                  {isStudent ? (
+                    <button 
+                      onClick={() => { setSelectedQuiz(quiz); setShowStartModal(true); }}
+                      className="btn btn-primary" 
+                      style={{ width: '100%', borderRadius: '14px', padding: '12px', border: 'none', cursor: 'pointer' }}
+                    >
+                      Làm bài
+                    </button>
+                  ) : (
+                    <Link to="/manage" className="btn btn-primary" style={{ width: '100%', borderRadius: '14px', padding: '12px' }}>
+                      Xem đề
+                    </Link>
+                  )}
                 </div>
               </div>
             ))
@@ -95,6 +108,13 @@ const TopicDetails = () => {
             </div>
           )}
         </div>
+      )}
+
+      {showStartModal && (
+        <StartExamModal 
+          quiz={selectedQuiz} 
+          onClose={() => setShowStartModal(false)} 
+        />
       )}
     </div>
   );

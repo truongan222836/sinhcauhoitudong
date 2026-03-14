@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import StartExamModal from '../components/StartExamModal';
 
 const QuizSearch = () => {
   const [quizCode, setQuizCode] = useState('');
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
   const navigate = useNavigate();
 
   const handleSearch = async () => {
@@ -24,7 +27,9 @@ const QuizSearch = () => {
       }
 
       // Navigate with DeThiId instead of code
-      navigate(`/exam/${data.data.DeThiId}`);
+      setQuizCode('');
+      setSelectedQuiz(data.data);
+      setShowStartModal(true);
     } catch (err) {
       alert(err.message);
     }
@@ -55,6 +60,13 @@ const QuizSearch = () => {
           Tìm kiếm
         </button>
       </div>
+
+      {showStartModal && (
+        <StartExamModal 
+          quiz={selectedQuiz} 
+          onClose={() => setShowStartModal(false)} 
+        />
+      )}
     </div>
   );
 };

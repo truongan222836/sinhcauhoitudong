@@ -1,5 +1,5 @@
 const { sql, config } = require("../config/db");
-const { generateQuestions: generateAIQuestions } = require("../ai-service/aiService");
+const { generateQuestions: generateAIQuestions } = require("../services/aiService");
 
 exports.generateQuestions = async (req, res) => {
     try {

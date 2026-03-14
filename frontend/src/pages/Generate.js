@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './Generate.css';
 
 const Generate = () => {
@@ -9,17 +9,38 @@ const Generate = () => {
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
   const [quizTitle, setQuizTitle] = useState('');
   const [duration, setDuration] = useState(60);
+  const [deadline, setDeadline] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState(null);
   const [editingQuestion, setEditingQuestion] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewRegenerateIndex, setPreviewRegenerateIndex] = useState(null);
+  const [topics, setTopics] = useState([]);
+  const [selectedTopic, setSelectedTopic] = useState('');
+
+  useEffect(() => {
+    fetchTopics();
+  }, []);
+
+  const fetchTopics = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/topics', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await res.json();
+      if (data.success) setTopics(data.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleGenerate = async () => {
     setIsLoading(true);
     setError('');
+    setWarning('');
     setGeneratedQuestions([]);
 
     try {
@@ -44,7 +65,7 @@ const Generate = () => {
       }
 
       if (data.warning) {
-        setError(data.warning); 
+        setWarning(data.warning); 
       }
 
       setGeneratedQuestions(data.data);
@@ -73,7 +94,9 @@ const Generate = () => {
         body: JSON.stringify({
           title: quizTitle,
           questions: generatedQuestions,
-          duration: duration
+          duration: duration,
+          topicId: selectedTopic,
+          deadline: deadline || null
         }),
       });
       const data = await response.json();
@@ -393,6 +416,16 @@ const Generate = () => {
               onChange={(e) => setDuration(parseInt(e.target.value, 10))}
             />
           </div>
+
+          <div className="input-group" style={{ maxWidth: '200px' }}>
+            <label className="input-label">Hạn chót nộp bài:</label>
+            <input
+              type="datetime-local"
+              className="gen-input"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </div>
           
           <button onClick={handleSaveQuiz} disabled={isSaving} className="gen-btn" style={{ marginTop: '16px' }}>
             {isSaving ? <><div className="spinner"></div> Đang xuất đề...</> : 'Lưu và Trích Xuất Đề Thi'}
@@ -444,9 +477,23 @@ const Generate = () => {
               <option value="Khó">Khó (Vận dụng cao)</option>
             </select>
           </div>
+
+          <div className="control-item">
+            <label className="input-label">4. Chủ đề</label>
+            <select
+              className="gen-select"
+              value={selectedTopic}
+              onChange={(e) => setSelectedTopic(e.target.value)}
+            >
+              <option value="">-- Chọn chủ đề --</option>
+              {topics.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
           
           <div className="control-item">
-            <label className="input-label">4. Số câu (1-100)</label>
+            <label className="input-label">5. Số câu (1-100)</label>
             <input
               type="number"
               className="gen-input"
@@ -468,6 +515,12 @@ const Generate = () => {
           )}
         </button>
       </div>
+
+      {warning && (
+        <div className="alert alert-warning" style={{ marginTop: '32px', background: '#fffbeb', border: '1px solid #fcd34d', color: '#92400e' }}>
+          <strong>Lưu ý:</strong> {warning}
+        </div>
+      )}
 
       {error && (
         <div className="alert alert-error" style={{ marginTop: '32px' }}>

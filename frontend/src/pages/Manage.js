@@ -1,11 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Manage = () => {
+  const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingQuiz, setEditingQuiz] = useState(null);
   const [editForm, setEditForm] = useState({ TieuDe: '', ThoiGianLamBai: '', MoTa: '' });
+  const [extendModalData, setExtendModalData] = useState(null);
+  const [extendForm, setExtendForm] = useState({ studentCode: '', newDeadline: '' });
+  const [extendAll, setExtendAll] = useState(false);
 
   useEffect(() => {
     fetchQuizzes();
@@ -100,6 +105,37 @@ const Manage = () => {
     }
   };
 
+  const handleExtendSubmit = async () => {
+    const code = extendAll ? 'ALL' : extendForm.studentCode;
+    if (!code || !extendForm.newDeadline) {
+      alert("Vui lòng nhập đầy đủ thông tin hoặc chọn Áp dụng tất cả.");
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:3000/api/exam/extend`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          examId: extendModalData,
+          studentCode: code,
+          newDeadline: extendForm.newDeadline
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+      
+      alert(data.message);
+      setExtendModalData(null);
+      setExtendForm({ studentCode: '', newDeadline: '' });
+      setExtendAll(false);
+    } catch (err) {
+      alert("Lỗi nới hạn: " + err.message);
+    }
+  };
+
   if (isLoading) return <div style={{ textAlign: 'center', padding: '50px', color: 'var(--text-secondary)' }}>Đang tải danh sách đề thi...</div>;
   if (error) return <div style={{ color: 'var(--danger)', textAlign: 'center', padding: '50px' }}>Lỗi: {error}</div>;
 
@@ -184,6 +220,12 @@ const Manage = () => {
                           <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                           Ngày tạo: {new Date(quiz.NgayTao).toLocaleDateString('vi-VN')}
                         </span>
+                        {quiz.HanNop && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--danger)' }}>
+                            <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Hạn nộp: {new Date(quiz.HanNop).toLocaleString('vi-VN')}
+                          </span>
+                        )}
                       </div>
                       <p style={{ margin: '8px 0 0 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
                           Mô tả: {quiz.MoTa || 'Trống'}
@@ -197,6 +239,17 @@ const Manage = () => {
                         </button>
                       )}
                       <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => handleEdit(quiz)}>Chỉnh sửa</button>
+                      {quiz.DaXuatBan && (
+                          <button className="btn btn-warning" style={{ width: '100%', background: '#F59E0B', borderColor: '#F59E0B', color: 'white' }} onClick={() => setExtendModalData(quiz.DeThiId)}>Nới Hạn SV</button>
+                      )}
+                      <button className="btn btn-info" style={{ 
+                        width: '100%', 
+                        background: '#10B981', 
+                        borderColor: '#10B981',
+                        color: 'white'
+                      }} onClick={() => navigate(`/quiz/${quiz.DeThiId}/analytics`)}>
+                        Xem Phân Tích
+                      </button>
                       <button className="btn btn-danger" style={{ width: '100%' }} onClick={() => handleDelete(quiz.DeThiId)}>Xóa Đề Thi</button>
                     </div>
                   </div>
@@ -211,6 +264,39 @@ const Manage = () => {
           </div>
         )}
       </div>
+
+      {/* Modal Nới Hạn */}
+      {extendModalData && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: '400px', padding: '24px' }}>
+            <h3 style={{ marginTop: 0 }}>Nới hạn nộp bài</h3>
+            
+            <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+               <input type="checkbox" id="extendAll" checked={extendAll} onChange={(e) => setExtendAll(e.target.checked)} style={{ transform: 'scale(1.2)', cursor: 'pointer' }} />
+               <label htmlFor="extendAll" style={{ fontSize: '14px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: '500' }}>Áp dụng cho tất cả sinh viên (Đổi hạn chót gốc)</label>
+            </div>
+
+            {!extendAll && (
+              <div style={{ marginBottom: '16px' }}>
+                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'var(--text-secondary)' }}>Mã số sinh viên cần nới</label>
+                 <input type="text" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} 
+                    value={extendForm.studentCode} onChange={(e) => setExtendForm({...extendForm, studentCode: e.target.value})} 
+                    placeholder="Nhập MSSV..." />
+              </div>
+            )}
+            
+            <div style={{ marginBottom: '24px' }}>
+               <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', color: 'var(--text-secondary)' }}>Thời gian hạn chót mới</label>
+               <input type="datetime-local" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc' }} 
+                  value={extendForm.newDeadline} onChange={(e) => setExtendForm({...extendForm, newDeadline: e.target.value})} />
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+               <button className="btn btn-secondary" onClick={() => { setExtendModalData(null); setExtendAll(false); }}>Hủy bỏ</button>
+               <button className="btn btn-primary" onClick={handleExtendSubmit}>Áp dụng nới hạn</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

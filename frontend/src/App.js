@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Generate from "./pages/Generate";
 import QuizSearch from "./pages/QuizSearch";
 import Manage from "./pages/Manage";
+import ResetPassword from "./pages/ResetPassword";
 import Exam from "./pages/Exam";
 import History from "./pages/History";
 import Profile from "./pages/Profile";
@@ -15,6 +16,11 @@ import Support from "./pages/Support";
 import HelpCenter from "./pages/HelpCenter";
 import TopicDetails from "./pages/TopicDetails";
 import UserProfile from "./pages/UserProfile";
+import AdminUsers from "./pages/AdminUsers";
+import AdminStats from "./pages/AdminStats";
+import TeacherAnalytics from "./pages/TeacherAnalytics";
+import LeaderboardPage from "./pages/LeaderboardPage";
+import QuizAnalytics from "./pages/QuizAnalytics";
 
 
 function App() {
@@ -25,6 +31,7 @@ function App() {
         {/* Public route for landing/login/register */}
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<HomePage />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         {/* Protected routes that use the Layout (Navbar, Footer) */}
         <Route element={<ProtectedRoute />}>
@@ -36,12 +43,21 @@ function App() {
             <Route path="/help" element={<HelpCenter />} />
             <Route path="/topics/:id" element={<TopicDetails />} />
             <Route path="/user/:id" element={<UserProfile />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
 
             {/* Routes chỉ cho Giảng viên (2) và Admin (1) */}
             <Route element={<ProtectedRoute allowedRoles={[1, 2]} />}>
               <Route path="/generate" element={<Generate />} />
               <Route path="/manage" element={<Manage />} />
               <Route path="/question-manager" element={<QuestionManager />} />
+              <Route path="/teacher/analytics" element={<TeacherAnalytics />} />
+              <Route path="/quiz/:id/analytics" element={<QuizAnalytics />} />
+            </Route>
+
+            {/* Routes chỉ cho Admin (1) */}
+            <Route element={<ProtectedRoute allowedRoles={[1]} />}>
+              <Route path="/admin/users" element={<AdminUsers />} />
+              <Route path="/admin/statistics" element={<AdminStats />} />
             </Route>
 
             {/* Routes chỉ cho Sinh viên (3) */}

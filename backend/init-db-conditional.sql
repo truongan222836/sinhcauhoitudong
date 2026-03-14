@@ -145,3 +145,16 @@ BEGIN
     );
 END
 GO
+
+-- Tạo bảng PasswordResetTokens nếu chưa có
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='PasswordResetTokens' AND xtype='U')
+BEGIN
+    CREATE TABLE PasswordResetTokens (
+        token_id INT PRIMARY KEY IDENTITY,
+        user_id INT FOREIGN KEY REFERENCES NguoiDung(NguoiDungId),
+        reset_token NVARCHAR(255),
+        expires_at DATETIME,
+        used BIT DEFAULT 0
+    );
+END
+GO

@@ -13,6 +13,17 @@ const Exam = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const attemptId = localStorage.getItem(`attempt_${id}`);
+    if (!attemptId && !isSubmitted) {
+      setError('Vui lòng nhập thông tin trước khi làm bài thi.');
+      setIsLoading(false);
+      // Wait a bit then redirect
+      setTimeout(() => navigate('/dashboard'), 3000);
+      return;
+    }
+  }, [id, navigate, isSubmitted]);
+
+  useEffect(() => {
     fetchQuiz();
   }, [id]);
 
@@ -31,17 +42,56 @@ const Exam = () => {
 
   const fetchQuiz = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/api/quizzes/${id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      const resp = await fetch(`http://localhost:3000/api/quizzes/${id}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Không thể tải đề thi.');
+      const quizData = await resp.json();
+      if (!resp.ok || !quizData.success) throw new Error(quizData.message || 'Lỗi tải đề');
+
+      setQuiz(quizData.data);
+
+      // Check if we already have an active attempt session to resume
+      // (This fetches from backend because startExam was already called by Modal)
+      // Actually, Modal already called startExam. Let's send another request or rely on localStorage?
+      // Better yet: Modal saves student info. We can re-call startExam here to get resume data.
+      
+      const sessionInfo = {
+          studentName: localStorage.getItem('last_name') || '',
+          studentClass: localStorage.getItem('last_class') || '',
+          studentId: localStorage.getItem('last_mssv') || ''
+      };
+
+      const resumeResp = await fetch('http://localhost:3000/api/quizzes/start', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ examId: id, ...sessionInfo })
+      });
+
+      const resumeData = await resumeResp.json();
+      if (resumeData.success) {
+          localStorage.setItem(`attempt_${id}`, resumeData.attemptId);
+          if (resumeData.resumed) {
+              // Load saved answers
+              const saved = {};
+              resumeData.savedAnswers.forEach(a => {
+                  let val = a.CauTraLoi;
+                  if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
+                      try { val = JSON.parse(val); } catch(e) {}
+                  }
+                  saved[a.CauHoiId] = val;
+              });
+              setAnswers(saved);
+              
+              // Adjust timer
+              const totalSecs = quizData.data.ThoiGianLamBai * 60;
+              setTimeLeft(Math.max(0, totalSecs - resumeData.elapsedSeconds));
+          } else {
+              setTimeLeft(quizData.data.ThoiGianLamBai * 60);
+          }
       }
-      setQuiz(data.data);
-      setTimeLeft(data.data.ThoiGianLamBai * 60); // Convert to seconds
     } catch (err) {
       setError(err.message);
     } finally {
@@ -49,19 +99,35 @@ const Exam = () => {
     }
   };
 
-  const handleAnswerChange = (questionId, answer) => {
-    setAnswers({ ...answers, [questionId]: answer });
+  const handleAnswerChange = async (questionId, answer) => {
+    setAnswers(prev => ({ ...prev, [questionId]: answer }));
+    
+    // Save to server immediately or debounced
+    try {
+        const attemptId = localStorage.getItem(`attempt_${id}`);
+        await fetch('http://localhost:3000/api/quizzes/save-answer', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ attemptId, questionId, selectedAnswer: answer })
+        });
+    } catch (e) {
+        console.error("Lỗi tự động lưu:", e);
+    }
   };
 
   const handleSubmit = async () => {
     try {
+      const attemptId = localStorage.getItem(`attempt_${id}`);
       const response = await fetch(`http://localhost:3000/api/quizzes/${id}/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ answers })
+        body: JSON.stringify({ answers, attemptId })
       });
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -69,6 +135,9 @@ const Exam = () => {
       }
       setScore(data.score);
       setIsSubmitted(true);
+      
+      // Clear attempt session
+      localStorage.removeItem(`attempt_${id}`);
       
       // Trigger refresh Dashboard stats
       localStorage.setItem('dashboardRefresh', Date.now().toString());
@@ -166,24 +235,70 @@ const Exam = () => {
 
       <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
         {quiz.questions.map((q, index) => (
-          <div key={q.id} style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '5px' }}>
-            <h3>Câu {index + 1}: {q.question}</h3>
+          <div key={q.id} style={{ marginBottom: '32px', padding: '32px', borderRadius: '16px', background: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.04)', border: '1px solid #edf2f7' }}>
+            <h3 style={{ fontSize: '18px', color: '#1e293b', lineHeight: '1.6', marginBottom: '24px', fontWeight: '600' }}>
+               <span style={{ color: '#315CFF', marginRight: '8px' }}>Câu {index + 1}:</span>
+               {q.question}
+            </h3>
 
             {q.type === 'Trắc nghiệm' && q.options && (
-              <div>
-                {q.options.map((option, i) => (
-                  <label key={i} style={{ display: 'block', marginBottom: '10px' }}>
-                    <input
-                      type="radio"
-                      name={`question-${q.id}`}
-                      value={option}
-                      checked={answers[q.id] === option}
-                      onChange={() => handleAnswerChange(q.id, option)}
-                      required
-                    />
-                    {' '}<strong style={{ marginRight: '5px' }}>{String.fromCharCode(65 + i)}.</strong>{option.replace(/^[A-D]\. /, '')}
-                  </label>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {q.options.map((option, i) => {
+                  const isChecked = answers[q.id] === option;
+                  return (
+                    <label 
+                      key={i} 
+                      style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '16px 20px', 
+                        borderRadius: '12px', 
+                        border: isChecked ? '2px solid #315CFF' : '2px solid #e2e8f0', 
+                        background: isChecked ? '#f0f4ff' : 'transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isChecked) {
+                          e.currentTarget.style.borderColor = '#cbd5e1';
+                          e.currentTarget.style.background = '#f8fafc';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isChecked) {
+                          e.currentTarget.style.borderColor = '#e2e8f0';
+                          e.currentTarget.style.background = 'transparent';
+                        }
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name={`question-${q.id}`}
+                        value={option}
+                        checked={isChecked}
+                        onChange={() => handleAnswerChange(q.id, option)}
+                        required
+                        style={{ display: 'none' }}
+                      />
+                      <div style={{ 
+                        width: '20px', 
+                        height: '20px', 
+                        borderRadius: '50%', 
+                        border: isChecked ? '6px solid #315CFF' : '2px solid #cbd5e1', 
+                        marginRight: '16px',
+                        background: 'white',
+                        flexShrink: 0,
+                        transition: 'all 0.2s ease'
+                      }}></div>
+                      <div style={{ fontSize: '15px', color: isChecked ? '#1e293b' : '#475569', lineHeight: '1.5' }}>
+                         <strong style={{ marginRight: '8px', color: isChecked ? '#315CFF' : '#64748b' }}>
+                           {String.fromCharCode(65 + i)}.
+                         </strong>
+                         {option.replace(/^[A-D]\. /, '')}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             )}
 

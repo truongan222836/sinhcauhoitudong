@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import StartExamModal from '../components/StartExamModal';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -8,7 +9,10 @@ const Dashboard = () => {
   const [recentQuizzes, setRecentQuizzes] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
+  const [trendingTopics, setTrendingTopics] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showStartModal, setShowStartModal] = useState(false);
+  const [selectedQuiz, setSelectedQuiz] = useState(null);
 
   const fetchDashboardData = async () => {
     try {
@@ -53,15 +57,18 @@ const Dashboard = () => {
       }
 
       // Fetch recent activity
-      const raResponse = await fetch('http://localhost:3000/api/users/recent-activity', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      const activityRes = await fetch('http://localhost:3000/api/users/recent-activity', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
-      if (raResponse.ok) {
-        const raData = await raResponse.json();
-        setRecentActivity(raData.data || []);
-      }
+      const activityData = await activityRes.json();
+      setRecentActivity(activityData.data || []);
+
+      // Fetch trending topics
+      const trendingRes = await fetch('http://localhost:3000/api/topics/trending', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const trendingData = await trendingRes.json();
+      setTrendingTopics(trendingData.data || []);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -71,6 +78,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Listen for storage events (from Exam.js)
+    const handleStorageChange = (e) => {
+      if (e.key === 'dashboardRefresh') {
+         fetchDashboardData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [user.roleId]);
 
   if (isLoading) {
@@ -84,44 +100,46 @@ const Dashboard = () => {
       {/* Main Content (Left) */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '35px' }}>
         
-        {/* Hero Banner */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, #315CFF 0%, #1E48E0 100%)',
-          borderRadius: '30px',
-          padding: '45px',
-          color: 'white',
-          position: 'relative',
-          overflow: 'hidden',
-          boxShadow: '0px 25px 50px -12px rgba(49, 92, 255, 0.35)'
-        }}>
-          <div style={{ position: 'relative', zIndex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '18px' }}>
-              <div style={{ background: 'rgba(255, 255, 255, 0.25)', padding: '10px', borderRadius: '14px', backdropFilter: 'blur(5px)' }}>
-                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        {/* Hero Banner (Only for Teachers/Admins) */}
+        {!isStudent && (
+          <div style={{ 
+            background: 'linear-gradient(135deg, #315CFF 0%, #1E48E0 100%)',
+            borderRadius: '30px',
+            padding: '45px',
+            color: 'white',
+            position: 'relative',
+            overflow: 'hidden',
+            boxShadow: '0px 25px 50px -12px rgba(49, 92, 255, 0.35)'
+          }}>
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '18px' }}>
+                <div style={{ background: 'rgba(255, 255, 255, 0.25)', padding: '10px', borderRadius: '14px', backdropFilter: 'blur(5px)' }}>
+                  <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                </div>
+                <h1 style={{ color: 'white', margin: 0, fontSize: '32px', fontWeight: '800' }}>Tạo Đề Thi Bằng AI</h1>
               </div>
-              <h1 style={{ color: 'white', margin: 0, fontSize: '32px', fontWeight: '800' }}>Tạo Đề Thi Bằng AI</h1>
+              <p style={{ fontSize: '18px', opacity: 0.9, marginBottom: '30px', maxWidth: '450px', lineHeight: '1.6' }}>
+                Biến tài liệu của bạn thành các câu hỏi tương tác trong vài giây. Hiện đại, nhanh chóng và hỗ trợ bởi AI (AQG).
+              </p>
+              <Link to="/generate" className="btn" style={{ 
+                background: 'white', 
+                color: 'var(--primary)', 
+                padding: '14px 35px', 
+                borderRadius: '16px',
+                fontSize: '16px',
+                boxShadow: '0px 10px 20px rgba(0,0,0,0.1)'
+              }}>
+                Tạo ngay
+              </Link>
             </div>
-            <p style={{ fontSize: '18px', opacity: 0.9, marginBottom: '30px', maxWidth: '450px', lineHeight: '1.6' }}>
-              Biến tài liệu của bạn thành các câu hỏi tương tác trong vài giây. Hiện đại, nhanh chóng và hỗ trợ bởi AI (AQG).
-            </p>
-            <Link to="/generate" className="btn" style={{ 
-              background: 'white', 
-              color: 'var(--primary)', 
-              padding: '14px 35px', 
-              borderRadius: '16px',
-              fontSize: '16px',
-              boxShadow: '0px 10px 20px rgba(0,0,0,0.1)'
-            }}>
-              Tạo ngay
-            </Link>
+            {/* Decorative elements */}
+            <div style={{ position: 'absolute', right: '-30px', top: '-30px', width: '200px', height: '200px', borderRadius: '100px', background: 'rgba(255, 255, 255, 0.08)' }}></div>
+            <div style={{ position: 'absolute', right: '120px', bottom: '-80px', width: '250px', height: '250px', borderRadius: '125px', background: 'rgba(255, 255, 255, 0.05)' }}></div>
+            <div style={{ position: 'absolute', right: '60px', top: '40px', color: 'rgba(255, 255, 255, 0.15)', transform: 'rotate(15deg)' }}>
+              <svg width="180" height="180" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            </div>
           </div>
-          {/* Decorative elements */}
-          <div style={{ position: 'absolute', right: '-30px', top: '-30px', width: '200px', height: '200px', borderRadius: '100px', background: 'rgba(255, 255, 255, 0.08)' }}></div>
-          <div style={{ position: 'absolute', right: '120px', bottom: '-80px', width: '250px', height: '250px', borderRadius: '125px', background: 'rgba(255, 255, 255, 0.05)' }}></div>
-          <div style={{ position: 'absolute', right: '60px', top: '40px', color: 'rgba(255, 255, 255, 0.15)', transform: 'rotate(15deg)' }}>
-             <svg width="180" height="180" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-          </div>
-        </div>
+        )}
 
         {/* Featured Quizzes section */}
         <section>
@@ -159,20 +177,36 @@ const Dashboard = () => {
                   <div style={{ padding: '24px' }}>
                     <h3 style={{ fontSize: '18px', marginBottom: '10px', height: '50px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{quiz.TieuDe}</h3>
                     
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: 'var(--text-tertiary)', fontWeight: '500' }}>
                         <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        {quiz.usageCount || Math.floor(Math.random() * 500) + 100} lượt thi
+                        {quiz.usageCount || 0} lượt thi
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: '800', color: 'var(--warning)' }}>
                         <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                        {quiz.averageRating || '4.8'}
+                        {quiz.averageRating !== undefined ? quiz.averageRating.toFixed(1) : '0.0'}
                       </div>
                     </div>
+                    {quiz.HanNop && (
+                      <div style={{ fontSize: '13px', color: 'var(--danger)', fontWeight: '600', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        Hạn chót: {new Date(quiz.HanNop).toLocaleString('vi-VN')}
+                      </div>
+                    )}
                     
-                    <Link to={isStudent ? `/exam/${quiz.DeThiId}` : "/manage"} className="btn btn-primary" style={{ width: '100%', borderRadius: '14px', padding: '14px' }}>
-                      {isStudent ? 'Làm bài ngay' : 'Chỉnh sửa ngay'}
-                    </Link>
+                    {isStudent ? (
+                      <button 
+                        onClick={() => { setSelectedQuiz(quiz); setShowStartModal(true); }}
+                        className="btn btn-primary" 
+                        style={{ width: '100%', borderRadius: '14px', padding: '14px', border: 'none', cursor: 'pointer' }}
+                      >
+                        Làm bài ngay
+                      </button>
+                    ) : (
+                      <Link to="/manage" className="btn btn-primary" style={{ width: '100%', borderRadius: '14px', padding: '14px' }}>
+                        Chỉnh sửa ngay
+                      </Link>
+                    )}
                   </div>
                 </div>
               ))
@@ -257,8 +291,8 @@ const Dashboard = () => {
             <span style={{ fontSize: '20px' }}>🚀</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-            {['Lịch sử Việt Nam', 'Toán Cao Cấp', 'Triết học', 'Tiếng Anh', 'Vật lý', 'Hóa học'].map(tag => (
-              <Link key={tag} to={`/topics/${encodeURIComponent(tag)}`} style={{ 
+            {trendingTopics.length > 0 ? trendingTopics.map(topic => (
+              <Link key={topic.id} to={`/topics/${encodeURIComponent(topic.name)}`} style={{ 
                 padding: '10px 18px', 
                 background: '#F4F7FE', 
                 borderRadius: '14px', 
@@ -268,12 +302,21 @@ const Dashboard = () => {
                 textDecoration: 'none',
                 transition: 'var(--transition)'
               }} onMouseOver={(e) => e.target.style.background = '#E0E5F2'} onMouseOut={(e) => e.target.style.background = '#F4F7FE'}>
-                {tag}
+                {topic.name} ({topic.questionCount || 0})
               </Link>
-            ))}
+            )) : (
+              <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>Đang tải...</div>
+            )}
           </div>
         </div>
       </div>
+      
+      {showStartModal && (
+        <StartExamModal 
+          quiz={selectedQuiz} 
+          onClose={() => setShowStartModal(false)} 
+        />
+      )}
     </div>
   );
 };

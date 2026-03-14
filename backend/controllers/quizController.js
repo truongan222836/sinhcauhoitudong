@@ -10,8 +10,122 @@ const generateQuizCode = (length = 6) => {
     return result;
 };
 
+exports.startExam = async (req, res) => {
+    const { examId, studentName, studentClass, studentId } = req.body;
+    const userId = req.user.id;
+    try {
+        const pool = await sql.connect(config);
+        
+        // 1. Check for existing 'Doing' attempt for this student info and exam
+        const existing = await pool.request()
+            .input('ExId', sql.Int, examId)
+            .input('MS', sql.VarChar, studentId)
+            .query(`
+                SELECT b.BaiThiId, b.NgayBatDau, d.ThoiGianLamBai, 
+                DATEDIFF(SECOND, b.NgayBatDau, GETDATE()) as ElapsedSeconds
+                FROM BaiThi b
+                JOIN DeThi d ON b.DeThiId = d.DeThiId
+                WHERE b.DeThiId = @ExId AND b.MSSV = @MS AND b.TrangThai = N'Đang làm'
+            `);
+
+        if (existing.recordset.length > 0) {
+            const attempt = existing.recordset[0];
+            const elapsedSeconds = attempt.ElapsedSeconds || 0;
+
+            if (elapsedSeconds < attempt.ThoiGianLamBai * 60) {
+                // Fetch saved answers for this attempt
+                const savedAnswers = await pool.request()
+                    .input('BTId', sql.Int, attempt.BaiThiId)
+                    .query("SELECT CauHoiId, CauTraLoi FROM ChiTietBaiThi WHERE BaiThiId = @BTId");
+
+                return res.json({ 
+                    success: true, 
+                    attemptId: attempt.BaiThiId, 
+                    resumed: true,
+                    savedAnswers: savedAnswers.recordset,
+                    elapsedSeconds: elapsedSeconds
+                });
+            }
+        }
+
+        // 2. Fetch Exam info to check deadline
+        const examInfoRes = await pool.request()
+            .input('ExId', sql.Int, examId)
+            .query("SELECT HanNop FROM DeThi WHERE DeThiId = @ExId");
+
+        if (examInfoRes.recordset.length > 0) {
+            const hanNop = examInfoRes.recordset[0].HanNop;
+            if (hanNop && new Date() > new Date(hanNop)) {
+                // Check if there is an extension
+                const extRes = await pool.request()
+                    .input('ExId', sql.Int, examId)
+                    .input('MS', sql.VarChar, studentId)
+                    .query("SELECT HanNopMoi FROM GiaHanBaiThi WHERE DeThiId = @ExId AND MSSV = @MS");
+
+                if (extRes.recordset.length === 0 || new Date() > new Date(extRes.recordset[0].HanNopMoi)) {
+                    return res.status(403).json({ success: false, message: "Bài kiểm tra đã quá hạn nộp." });
+                }
+            }
+        }
+
+        // 3. No valid resume, create new
+        const result = await pool.request()
+            .input('DeThiId', sql.Int, examId)
+            .input('NguoiDungId', sql.Int, userId)
+            .input('HoTen', sql.NVarChar, studentName)
+            .input('Lop', sql.NVarChar, studentClass)
+            .input('MSSV', sql.VarChar, studentId)
+            .query(`INSERT INTO BaiThi (DeThiId, NguoiDungId, NgayBatDau, TrangThai, HoTen, Lop, MSSV) 
+                    OUTPUT INSERTED.BaiThiId 
+                    VALUES (@DeThiId, @NguoiDungId, GETDATE(), N'Đang làm', @HoTen, @Lop, @MSSV)`);
+
+        const baiThiId = result.recordset[0].BaiThiId;
+        res.json({ success: true, attemptId: baiThiId, resumed: false });
+    } catch (err) {
+        console.error("Lỗi khi bắt đầu bài thi:", err);
+        res.status(500).json({ success: false, message: "Lỗi server khi bắt đầu bài thi", error: err.message });
+    }
+};
+
+exports.saveAnswer = async (req, res) => {
+    const { attemptId, questionId, selectedAnswer } = req.body;
+    try {
+        const pool = await sql.connect(config);
+        
+        // Convert array/object answer to string for DB
+        const answerText = typeof selectedAnswer === 'object' ? JSON.stringify(selectedAnswer) : String(selectedAnswer);
+
+        // Check if record exists
+        const check = await pool.request()
+            .input('BTId', sql.Int, attemptId)
+            .input('QId', sql.Int, questionId)
+            .query("SELECT ChiTietBaiThiId FROM ChiTietBaiThi WHERE BaiThiId = @BTId AND CauHoiId = @QId");
+
+        if (check.recordset.length > 0) {
+            // Update
+            await pool.request()
+                .input('BTId', sql.Int, attemptId)
+                .input('QId', sql.Int, questionId)
+                .input('Txt', sql.NVarChar, answerText)
+                .query("UPDATE ChiTietBaiThi SET CauTraLoi = @Txt WHERE BaiThiId = @BTId AND CauHoiId = @QId");
+        } else {
+            // Insert
+            await pool.request()
+                .input('BTId', sql.Int, attemptId)
+                .input('QId', sql.Int, questionId)
+                .input('Txt', sql.NVarChar, answerText)
+                .query("INSERT INTO ChiTietBaiThi (BaiThiId, CauHoiId, CauTraLoi) VALUES (@BTId, @QId, @Txt)");
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("Lỗi khi lưu câu trả lời:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
 exports.createQuizFromGenerated = async (req, res) => {
-    const { title, questions, duration } = req.body;
+    const { title, questions, duration, topicId, deadline } = req.body;
     let transaction;
     try {
         const createdBy = req.user.id; // Lấy từ middleware 'protect'
@@ -26,9 +140,11 @@ exports.createQuizFromGenerated = async (req, res) => {
             .input('MaDeThi', sql.VarChar, quizCode)
             .input('CreatedBy', sql.Int, createdBy)
             .input('Duration', sql.Int, duration || 60)
-            .query(`INSERT INTO DeThi (TieuDe, MaDeThi, NguoiTaoId, ThoiGianLamBai) 
+            .input('TopicId', sql.Int, topicId || null)
+            .input('Deadline', sql.DateTime, deadline ? new Date(deadline) : null)
+            .query(`INSERT INTO DeThi (TieuDe, MaDeThi, NguoiTaoId, ThoiGianLamBai, ChuDeId, HanNop) 
                     OUTPUT INSERTED.DeThiId 
-                    VALUES (@Title, @MaDeThi, @CreatedBy, @Duration)`);
+                    VALUES (@Title, @MaDeThi, @CreatedBy, @Duration, @TopicId, @Deadline)`);
 
         const quizId = quizResult.recordset[0].DeThiId;
 
@@ -42,14 +158,16 @@ exports.createQuizFromGenerated = async (req, res) => {
 
             // Lưu câu hỏi vào bảng CauHoi
             // 🔥 FIX: Tạo request mới trong mỗi vòng lặp để tránh lỗi trùng tham số
+            // Lưu câu hỏi vào bảng CauHoi
             const questionRequest = new sql.Request(transaction);
             const questionResult = await questionRequest
                 .input('Content', sql.NVarChar, q.question)
                 .input('TypeId', sql.Int, typeId)
                 .input('CreatedBy_Q', sql.Int, createdBy)
-                .query(`INSERT INTO CauHoi (NoiDung, LoaiId, LoaiCauHoiId, NguoiTaoId) 
+                .input('TopicId_Q', sql.Int, topicId || null)
+                .query(`INSERT INTO CauHoi (NoiDung, LoaiId, LoaiCauHoiId, NguoiTaoId, ChuDeId) 
                         OUTPUT INSERTED.CauHoiId 
-                        VALUES (@Content, @TypeId, @TypeId, @CreatedBy_Q)`);
+                        VALUES (@Content, @TypeId, @TypeId, @CreatedBy_Q, @TopicId_Q)`);
 
             const questionId = questionResult.recordset[0].CauHoiId;
 
@@ -106,14 +224,16 @@ exports.createQuizFromGenerated = async (req, res) => {
 
 exports.getQuizzesByLecturer = async (req, res) => {
     try {
-        const lecturerId = req.user.id; // 🔥 FIX: Di chuyển vào trong try...catch
+        const lecturerId = req.user.id;
+        const limit = req.query.limit ? parseInt(req.query.limit) : 1000;
         const pool = await sql.connect(config);
-        const request = pool.request();
-        const result = await request
+        const result = await pool.request()
             .input('LecturerId', sql.Int, lecturerId)
-            .query(`SELECT DeThiId, TieuDe, MaDeThi, NgayTao, DaXuatBan, ThoiGianLamBai
-                    FROM DeThi 
-                    WHERE NguoiTaoId = @LecturerId ORDER BY NgayTao DESC`);
+            .query(`SELECT TOP ${limit} d.DeThiId, d.TieuDe, d.MaDeThi, d.NgayTao, d.DaXuatBan, d.ThoiGianLamBai, d.MoTa, d.HanNop,
+                           (SELECT COUNT(*) FROM BaiThi b WHERE b.DeThiId = d.DeThiId) as usageCount,
+                           ISNULL((SELECT AVG(Diem) FROM BaiThi b WHERE b.DeThiId = d.DeThiId AND b.TrangThai = N'Đã nộp'), 0) as averageRating
+                    FROM DeThi d 
+                    WHERE d.NguoiTaoId = @LecturerId ORDER BY d.NgayTao DESC`);
         res.json({ success: true, data: result.recordset });
 
     } catch (err) {
@@ -124,13 +244,16 @@ exports.getQuizzesByLecturer = async (req, res) => {
 
 exports.getAvailableQuizzes = async (req, res) => {
     try {
+        const limit = req.query.limit ? parseInt(req.query.limit) : 1000;
         const pool = await sql.connect(config);
         const request = pool.request();
         const result = await request
-            .query(`SELECT DeThiId, TieuDe, MaDeThi, MoTa, ThoiGianLamBai, NgayTao
-                    FROM DeThi 
-                    WHERE DaXuatBan = 1 
-                    ORDER BY NgayTao DESC`);
+            .query(`SELECT TOP ${limit} d.DeThiId, d.TieuDe, d.MaDeThi, d.MoTa, d.ThoiGianLamBai, d.NgayTao, d.HanNop,
+                           (SELECT COUNT(*) FROM BaiThi b WHERE b.DeThiId = d.DeThiId) as usageCount,
+                           ISNULL((SELECT AVG(Diem) FROM BaiThi b WHERE b.DeThiId = d.DeThiId AND b.TrangThai = N'Đã nộp'), 0) as averageRating
+                    FROM DeThi d 
+                    WHERE d.DaXuatBan = 1 
+                    ORDER BY d.NgayTao DESC`);
 
         res.json({ success: true, data: result.recordset });
     } catch (err) {
@@ -257,7 +380,7 @@ exports.getQuizById = async (req, res) => {
 
 exports.submitQuiz = async (req, res) => {
     const { id: quizId } = req.params;
-    const { answers } = req.body;
+    const { answers, attemptId } = req.body;
     const userId = req.user.id;
     let transaction;
 
@@ -266,17 +389,53 @@ exports.submitQuiz = async (req, res) => {
         transaction = new sql.Transaction();
         await transaction.begin();
 
-        // 1. Tạo bản ghi Bài Thi
-        const baiThiResult = await new sql.Request(transaction)
-            .input('QuizId', sql.Int, quizId)
-            .input('UserId', sql.Int, userId)
-            .query(`INSERT INTO BaiThi (DeThiId, NguoiDungId, NgayNop, TrangThai) 
-                    OUTPUT INSERTED.BaiThiId 
-                    VALUES (@QuizId, @UserId, GETDATE(), N'Đã nộp')`);
+        let baiThiId = attemptId;
 
-        const baiThiId = baiThiResult.recordset[0].BaiThiId;
+        if (baiThiId) {
+            // Update existing attempt
+            await new sql.Request(transaction)
+                .input('BTId', sql.Int, baiThiId)
+                .query(`UPDATE BaiThi SET NgayNop = GETDATE(), TrangThai = N'Đã nộp' WHERE BaiThiId = @BTId`);
+            
+            // If answers provided in body, merge/update them in DB
+            if (answers && Object.keys(answers).length > 0) {
+                for (const qId in answers) {
+                    const ans = answers[qId];
+                    const answerText = typeof ans === 'object' ? JSON.stringify(ans) : String(ans);
+                    await new sql.Request(transaction)
+                        .input('BTId', sql.Int, baiThiId)
+                        .input('QId', sql.Int, qId)
+                        .input('Txt', sql.NVarChar, answerText)
+                        .query(`
+                            IF EXISTS (SELECT 1 FROM ChiTietBaiThi WHERE BaiThiId = @BTId AND CauHoiId = @QId)
+                                UPDATE ChiTietBaiThi SET CauTraLoi = @Txt WHERE BaiThiId = @BTId AND CauHoiId = @QId
+                            ELSE
+                                INSERT INTO ChiTietBaiThi (BaiThiId, CauHoiId, CauTraLoi) VALUES (@BTId, @QId, @Txt)
+                        `);
+                }
+            }
+        } else {
+            // 1. Tạo bản ghi Bài Thi mới (hành vi cũ nếu không có attemptId)
+            const baiThiResult = await new sql.Request(transaction)
+                .input('QuizId', sql.Int, quizId)
+                .input('UserId', sql.Int, userId)
+                .query(`INSERT INTO BaiThi (DeThiId, NguoiDungId, NgayNop, TrangThai) 
+                        OUTPUT INSERTED.BaiThiId 
+                        VALUES (@QuizId, @UserId, GETDATE(), N'Đã nộp')`);
 
-        // 2. Lấy đáp án đúng để chấm điểm (chỉ trắc nghiệm)
+            baiThiId = baiThiResult.recordset[0].BaiThiId;
+        }
+
+        // 2. Lấy đáp án đúng và câu trả lời đã lưu để chấm điểm
+        const savedAnswersRes = await new sql.Request(transaction)
+            .input('BTId', sql.Int, baiThiId)
+            .query('SELECT CauHoiId, CauTraLoi FROM ChiTietBaiThi WHERE BaiThiId = @BTId');
+        
+        const dbAnswers = {};
+        savedAnswersRes.recordset.forEach(row => {
+            dbAnswers[row.CauHoiId] = row.CauTraLoi;
+        });
+
         const questionsResult = await new sql.Request(transaction)
             .input('QuizId', sql.Int, quizId)
             .query(`
@@ -291,7 +450,11 @@ exports.submitQuiz = async (req, res) => {
         let correctCount = 0;
 
         for (const q of questionsResult.recordset) {
-            const userAnswer = answers[q.CauHoiId] || '';
+            let userAnswer = dbAnswers[q.CauHoiId] || '';
+            if (typeof userAnswer === 'string' && (userAnswer.startsWith('[') || userAnswer.startsWith('{'))) {
+                try { userAnswer = JSON.parse(userAnswer); } catch(e) {}
+            }
+
             let diem = 0;
 
             if (q.TenLoai === 'Trắc nghiệm') {
@@ -300,12 +463,10 @@ exports.submitQuiz = async (req, res) => {
                     .query('SELECT NoiDung FROM DapAn WHERE CauHoiId = @QId AND LaDapAnDung = 1');
 
                 const correctAnswerRaw = correctAnswerResult.recordset[0]?.NoiDung || '';
+                const normalizedCorrect = correctAnswerRaw.replace(/^[A-D]\. /, '').trim().toLowerCase();
+                const normalizedUser = (typeof userAnswer === 'string' ? userAnswer : '').replace(/^[A-D]\. /, '').trim().toLowerCase();
 
-                // Chuẩn hóa để so sánh: loại bỏ "A. " nếu có
-                const normalizedCorrect = correctAnswerRaw.replace(/^[A-D]\. /, '');
-                const normalizedUser = userAnswer.replace(/^[A-D]\. /, '');
-
-                if (normalizedUser === normalizedCorrect) {
+                if (normalizedUser === normalizedCorrect && normalizedUser !== '') {
                     diem = 1;
                     correctCount++;
                 }
@@ -313,129 +474,36 @@ exports.submitQuiz = async (req, res) => {
                 const correctAnswerResult = await new sql.Request(transaction)
                     .input('QId', sql.Int, q.CauHoiId)
                     .query('SELECT NoiDung FROM DapAn WHERE CauHoiId = @QId AND LaDapAnDung = 1');
-                
                 const blanks = correctAnswerResult.recordset.map(r => r.NoiDung.toLowerCase().trim());
-                // userAnswer ở frontend có thể là mảng các từ điền vào
+                
                 let userAnswersArray = [];
                 if (Array.isArray(userAnswer)) {
                     userAnswersArray = userAnswer.map(a => (a || '').toLowerCase().trim());
                 } else if (typeof userAnswer === 'string') {
                     userAnswersArray = userAnswer.split(',').map(a => a.toLowerCase().trim());
-                } else if (typeof userAnswer === 'object' && userAnswer !== null) {
-                    // Nếu frontend gửi lên object { 0: 'a', 1: 'b' }
-                    userAnswersArray = Object.values(userAnswer).map(a => (a || '').toLowerCase().trim());
                 }
 
                 let correctBlanks = 0;
                 for (let i = 0; i < blanks.length; i++) {
-                    const userAns = userAnswersArray[i] || '';
-                    const correctAns = blanks[i];
-                    
-                    // Chấm tương đối: 
-                    // 1. Nếu giống hệt → 1 điểm
-                    // 2. Nếu chứa từ khóa chính (bỏ dấu và ký tự đặc biệt) → 0.7 điểm
-                    // 3. Nếu viết không quá sai → 0.3 điểm
-                    
-                    if (userAns === correctAns) {
-                        correctBlanks += 1;
-                    } else {
-                        // Bỏ dấu và ký tự đặc biệt để so sánh
-                        const normalizedCorrect = correctAns.replace(/[àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỡđ]/g, function(char){
-                            const map = {'à':'a', 'á':'a', 'ạ':'a', 'ả':'a', 'ã':'a', 'ă':'a', 'ằ':'a', 'ắ':'a', 'ặ':'a', 'ẳ':'a', 'ẵ':'a', 'â':'a', 'ầ':'a', 'ấ':'a', 'ậ':'a', 'ẩ':'a', 'ẫ':'a', 'è':'e', 'é':'e', 'ẹ':'e', 'ẻ':'e', 'ẽ':'e', 'ê':'e', 'ề':'e', 'ế':'e', 'ệ':'e', 'ể':'e', 'ễ':'e', 'ì':'i', 'í':'i', 'ị':'i', 'ỉ':'i', 'ĩ':'i', 'ò':'o', 'ó':'o', 'ọ':'o', 'ỏ':'o', 'õ':'o', 'ô':'o', 'ồ':'o', 'ố':'o', 'ộ':'o', 'ổ':'o', '�':'o', 'ơ':'o', 'ờ':'o', 'ớ':'o', 'ợ':'o', 'ở':'o', 'ỡ':'o', 'ù':'u', 'ú':'u', 'ụ':'u', 'ủ':'u', 'ũ':'u', 'ư':'u', 'ừ':'u', 'ứ':'u', 'ự':'u', 'ử':'u', 'ữ':'u', 'ỳ':'y', 'ý':'y', 'ỵ':'y', 'ỷ':'y', 'ỡ':'y', 'đ':'d'};
-                            return map[char] || char;
-                        }).replace(/[^\w\s]/g, '');
-                        const normalizedUser = userAns.replace(/[àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỡđ]/g, function(char){
-                            const map = {'à':'a', 'á':'a', 'ạ':'a', 'ả':'a', 'ã':'a', 'ă':'a', 'ằ':'a', 'ắ':'a', 'ặ':'a', 'ẳ':'a', 'ẵ':'a', 'â':'a', 'ầ':'a', 'ấ':'a', 'ậ':'a', 'ẩ':'a', 'ẫ':'a', 'è':'e', 'é':'e', 'ẹ':'e', 'ẻ':'e', 'ẽ':'e', 'ê':'e', 'ề':'e', 'ế':'e', 'ệ':'e', 'ể':'e', 'ễ':'e', 'ì':'i', 'í':'i', 'ị':'i', 'ỉ':'i', 'ĩ':'i', 'ò':'o', 'ó':'o', 'ọ':'o', 'ỏ':'o', 'õ':'o', 'ô':'o', 'ồ':'o', 'ố':'o', 'ộ':'o', 'ổ':'o', '�':'o', 'ơ':'o', 'ờ':'o', 'ớ':'o', 'ợ':'o', 'ở':'o', 'ỡ':'o', 'ù':'u', 'ú':'u', 'ụ':'u', 'ủ':'u', 'ũ':'u', 'ư':'u', 'ừ':'u', 'ứ':'u', 'ự':'u', 'ử':'u', 'ữ':'u', 'ỳ':'y', 'ý':'y', 'ỵ':'y', 'ỷ':'y', 'ỡ':'y', 'đ':'d'};
-                            return map[char] || char;
-                        }).replace(/[^\w\s]/g, '');
-                        
-                        if (normalizedUser === normalizedCorrect) {
-                            correctBlanks += 0.8; // Chấp nhận phiên bản bỏ dấu
-                        } else if (normalizedCorrect.includes(normalizedUser) || normalizedUser.includes(normalizedCorrect)) {
-                            correctBlanks += 0.5; // Chứa một phần
-                        } else if (userAns.length > 0) {
-                            correctBlanks += 0.2; // Có nỗ lực trả lời
-                        }
-                    }
+                    if (userAnswersArray[i] === blanks[i] && userAnswersArray[i]) correctBlanks++;
                 }
                 
-                // Điểm theo tỉ lệ số ô điền đúng
                 if (blanks.length > 0) {
                      diem = correctBlanks / blanks.length;
                      correctCount += diem;
                 }
             } else if (q.TenLoai === 'Tự luận') {
-                const correctAnswerResult = await new sql.Request(transaction)
-                    .input('QId', sql.Int, q.CauHoiId)
-                    .query('SELECT NoiDung FROM DapAn WHERE CauHoiId = @QId AND LaDapAnDung = 1');
-                
-                const answerGuide = correctAnswerResult.recordset[0]?.NoiDung || '';
-                
-                // Chấm tương đối: xây dựng heuristic từ gợi ý đáp án
-                if (answerGuide && typeof userAnswer === 'string' && userAnswer.trim().length > 0) {
-                    // Loại bỏ dấu + ký tự đặc biệt, lọc từ khóa dài hơn 2 ký tự
-                    const removeDiacritics = (str) => {
-                        return str
-                            .replace(/[àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỡđ]/g, function(char){
-                                const map = {'à':'a', 'á':'a', 'ạ':'a', 'ả':'a', 'ã':'a', 'ă':'a', 'ằ':'a', 'ắ':'a', 'ặ':'a', 'ẳ':'a', 'ẵ':'a', 'â':'a', 'ầ':'a', 'ấ':'a', 'ậ':'a', 'ẩ':'a', 'ẫ':'a', 'è':'e', 'é':'e', 'ẹ':'e', 'ẻ':'e', 'ẽ':'e', 'ê':'e', 'ề':'e', 'ế':'e', 'ệ':'e', 'ể':'e', 'ễ':'e', 'ì':'i', 'í':'i', 'ị':'i', 'ỉ':'i', 'ĩ':'i', 'ò':'o', 'ó':'o', 'ọ':'o', 'ỏ':'o', 'õ':'o', 'ô':'o', 'ồ':'o', 'ố':'o', 'ộ':'o', 'ổ':'o', '':'o', 'ơ':'o', 'ờ':'o', 'ớ':'o', 'ợ':'o', 'ở':'o', 'ỡ':'o', 'ù':'u', 'ú':'u', 'ụ':'u', 'ủ':'u', 'ũ':'u', 'ư':'u', 'ừ':'u', 'ứ':'u', 'ự':'u', 'ử':'u', 'ữ':'u', 'ỳ':'y', 'ý':'y', 'ỵ':'y', 'ỷ':'y', 'ỡ':'y', 'đ':'d'};
-                                return map[char] || char;
-                            })
-                            .replace(/[^\w\s]/g, "");
-                    };
-                    
-                    const normalizedGuide = removeDiacritics(answerGuide).toLowerCase();
-                    const normalizedUser = removeDiacritics(userAnswer).toLowerCase();
-                    const keywordsGuide = normalizedGuide.split(/\s+/).filter(w => w.length > 2);
-                    const wordsUser = normalizedUser.split(/\s+/);
-                    
-                    if (keywordsGuide.length > 0) {
-                        // Đếm từ khóa khớp
-                        let matchCount = 0;
-                        for (const kw of keywordsGuide) {
-                            if (normalizedUser.includes(kw)) {
-                                matchCount++;
-                            }
-                        }
-                        
-                        const matchRatio = matchCount / keywordsGuide.length;
-                        
-                        if (matchRatio >= 0.8) {
-                            diem = 1.0; // Khớp 80% từ khóa → điểm tối đa
-                        } else if (matchRatio >= 0.6) {
-                            diem = 0.9; // Khớp 60% → 0.9
-                        } else if (matchRatio >= 0.4) {
-                            diem = 0.7; // Khớp 40% → 0.7
-                        } else if (matchRatio > 0 && wordsUser.length > 5) {
-                            diem = 0.5; // Khớp ít từ nhưng viết khá dài → 0.5
-                        } else if (wordsUser.length > 8) {
-                            diem = 0.3; // Viết dài nhưng ít khớp → 0.3
-                        } else {
-                            diem = 0.1; // Nỗ lực nhưng không khớp nhiều
-                        }
-                        
-                        correctCount += diem;
-                    } else {
-                        // Gợi ý không có từ khóa → chấp nhận nếu viết dài
-                        if (userAnswer.trim().length > 30) {
-                            diem = 0.5;
-                        } else if (userAnswer.trim().length > 15) {
-                            diem = 0.3;
-                        }
-                        correctCount += diem;
-                    }
-                }
+                diem = (userAnswer && userAnswer.length > 20) ? 0.5 : 0;
+                correctCount += diem;
             }
 
-            // Lưu chi tiết
             await new sql.Request(transaction)
                 .input('BTId', sql.Int, baiThiId)
                 .input('QId', sql.Int, q.CauHoiId)
-                .input('AnswerText', sql.NVarChar, Array.isArray(userAnswer) ? userAnswer.join(', ') : userAnswer)
                 .input('Diem', sql.Float, diem)
-                .query('INSERT INTO ChiTietBaiThi (BaiThiId, CauHoiId, CauTraLoi, Diem) VALUES (@BTId, @QId, @AnswerText, @Diem)');
+                .query('UPDATE ChiTietBaiThi SET Diem = @Diem WHERE BaiThiId = @BTId AND CauHoiId = @QId');
         }
 
-        // 3. Cập nhật tổng điểm
         await new sql.Request(transaction)
             .input('Score', sql.Float, correctCount)
             .input('BTId', sql.Int, baiThiId)
@@ -448,6 +516,105 @@ exports.submitQuiz = async (req, res) => {
         if (transaction && !transaction.rolledBack) await transaction.rollback();
         console.error("Lỗi khi nộp bài:", err);
         res.status(500).json({ message: "Lỗi khi nộp bài", error: err.message });
+    }
+};
+
+exports.getRanking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pool = await sql.connect(config);
+        
+        // Optimize: Use ROW_NUMBER() and take TOP 50 for performance
+        const result = await pool.request()
+            .input('Id', sql.Int, id)
+            .query(`
+                SELECT TOP 50
+                    ROW_NUMBER() OVER (ORDER BY Diem DESC, NgayNop ASC) as [rank],
+                    HoTen as studentName, 
+                    Lop as studentClass, 
+                    MSSV as studentId, 
+                    Diem as score, 
+                    NgayNop as completedAt
+                FROM BaiThi
+                WHERE DeThiId = @Id AND TrangThai = N'Đã nộp'
+                ORDER BY Diem DESC, NgayNop ASC
+            `);
+        res.json({ success: true, data: result.recordset });
+    } catch (err) {
+        console.error("Lỗi getRanking:", err);
+        res.status(500).json({ success: false, message: "Lỗi khi lấy bảng xếp hạng" });
+    }
+};
+
+exports.getExamStats = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pool = await sql.connect(config);
+        
+        // Lấy thống kê tổng quan và phân bổ điểm
+        const statsResult = await pool.request()
+            .input('Id', sql.Int, id)
+            .query(`
+                SELECT 
+                    COUNT(*) as totalAttempts,
+                    ROUND(AVG(Diem), 2) as averageScore,
+                    MAX(Diem) as highestScore,
+                    MIN(Diem) as lowestScore,
+                    STDEV(Diem) as standardDeviation
+                FROM BaiThi
+                WHERE DeThiId = @Id AND TrangThai = N'Đã nộp';
+
+                -- Score distribution
+                SELECT 
+                    FLOOR(Diem) as scoreRange,
+                    COUNT(*) as count
+                FROM BaiThi
+                WHERE DeThiId = @Id AND TrangThai = N'Đã nộp'
+                GROUP BY FLOOR(Diem)
+                ORDER BY scoreRange;
+            `);
+
+        const stats = statsResult.recordsets[0][0];
+        const distribution = statsResult.recordsets[1];
+
+        res.json({ 
+            success: true, 
+            data: { 
+                ...stats, 
+                scoreDistribution: distribution 
+            } 
+        });
+    } catch (err) {
+        console.error("Lỗi getExamStats:", err);
+        res.status(500).json({ success: false, message: "Lỗi khi lấy thống kê bài thi" });
+    }
+};
+
+exports.getQuestionStats = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const pool = await sql.connect(config);
+        
+        // Lấy top 10 câu hỏi sai nhiều nhất
+        const result = await pool.request()
+            .input('Id', sql.Int, id)
+            .query(`
+                SELECT TOP 10
+                    q.CauHoiId as id, 
+                    q.NoiDung as text, 
+                    COUNT(ct.ChiTietBaiThiId) as wrongCount,
+                    (SELECT COUNT(*) FROM ChiTietBaiThi WHERE CauHoiId = q.CauHoiId) as totalResponses
+                FROM CauHoi q
+                JOIN ChiTietDeThi cdt ON q.CauHoiId = cdt.CauHoiId
+                LEFT JOIN ChiTietBaiThi ct ON q.CauHoiId = ct.CauHoiId AND ct.Diem < 1
+                WHERE cdt.DeThiId = @Id
+                GROUP BY q.CauHoiId, q.NoiDung
+                ORDER BY wrongCount DESC
+            `);
+        res.json({ success: true, data: result.recordset });
+    } catch (err) {
+        console.error("Lỗi getQuestionStats:", err);
+        res.status(500).json({ success: false, message: "Lỗi khi lấy thống kê câu hỏi" });
     }
 };
 
@@ -541,11 +708,12 @@ exports.getQuizzesByTopic = async (req, res) => {
         // Search by topic implicitly inside title or description
         // In real app, we should have a Tag or Topic table
         const result = await pool.request()
-            .input('Topic', sql.NVarChar, `%${name}%`)
-            .query(`SELECT DeThiId, TieuDe, MaDeThi, MoTa, ThoiGianLamBai, NgayTao
-                    FROM DeThi 
-                    WHERE DaXuatBan = 1 AND (TieuDe LIKE @Topic OR MoTa LIKE @Topic)
-                    ORDER BY NgayTao DESC`);
+            .input('TopicName', sql.NVarChar, name)
+            .query(`SELECT d.DeThiId, d.TieuDe, d.MaDeThi, d.MoTa, d.ThoiGianLamBai, d.NgayTao
+                    FROM DeThi d
+                    JOIN ChuDe c ON d.ChuDeId = c.ChuDeId
+                    WHERE d.DaXuatBan = 1 AND c.TenChuDe = @TopicName
+                    ORDER BY d.NgayTao DESC`);
 
         res.json({ success: true, data: result.recordset });
     } catch (err) {

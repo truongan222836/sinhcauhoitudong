@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 const LoginForm = ({ setActiveTab }) => {
     const [formData, setFormData] = useState({ email: '', password: '' });
     const [message, setMessage] = useState('');
-    const navigate = useNavigate();
+    // const navigate = useNavigate(); // Removed unused variable
 
     const { login } = useAuth();
 
