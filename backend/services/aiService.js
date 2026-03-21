@@ -58,6 +58,7 @@ async function callGeminiRaw(prompt, apiKey) {
             err.retryAfter = match ? Math.ceil(parseFloat(match[1])) : 30;
             throw err;
         }
+        console.error(`[AI-SERVICE] Gemini Error: ${error.message}`, error.response?.data);
         return null;
     }
 }
@@ -138,7 +139,12 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
             for (const provider of providersInOrder) {
                 try {
                     let result = null;
-                    if (provider === 'gemini') result = await callGemini(prompt, process.env.GEMINI_API_KEY);
+                    if (provider === 'gemini') {
+                        if (!process.env.GEMINI_API_KEY) {
+                            console.warn('[AI-SERVICE] GEMINI_API_KEY is missing');
+                        }
+                        result = await callGemini(prompt, process.env.GEMINI_API_KEY);
+                    }
                     else if (provider === 'openai') result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
                     else if (provider === 'groq') result = await callGroq(prompt, process.env.GROQ_API_KEY);
                     else if (provider === 'ollama') result = await callOllama(prompt);
