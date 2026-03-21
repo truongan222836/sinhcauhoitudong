@@ -49,6 +49,15 @@ async function callGeminiRaw(prompt, apiKey) {
     }
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
+        
+        // Debug: List available models
+        try {
+            const models = await genAI.listModels();
+            console.log(`[AI-SERVICE][GEMINI] Available Models: ${JSON.stringify(models.map(m => m.name))}`);
+        } catch (listErr) {
+            console.warn(`[AI-SERVICE][GEMINI] Could not list models: ${listErr.message}`);
+        }
+
         const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
         
         console.log(`[AI-SERVICE][GEMINI] Requesting model via SDK: ${GEMINI_MODEL}`);
