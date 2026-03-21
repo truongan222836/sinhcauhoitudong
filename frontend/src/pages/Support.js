@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import API_BASE_URL from '../apiConfig';
 
 const Support = () => {
   const [title, setTitle] = useState('');
@@ -10,7 +10,7 @@ const Support = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/support', {
+      const response = await fetch(`${API_BASE_URL}/support`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

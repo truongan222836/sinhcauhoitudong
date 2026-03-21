@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../apiConfig';
 
 const LeaderboardPage = () => {
   const [leaderboard, setLeaderboard] = useState([]);
@@ -10,7 +10,7 @@ const LeaderboardPage = () => {
 
   const fetchLeaderboard = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/users/leaderboard', {
+      const res = await fetch(`${API_BASE_URL}/users/leaderboard`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();

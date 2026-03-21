@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import StartExamModal from '../components/StartExamModal';
+import API_BASE_URL from '../apiConfig';
 
 const TopicDetails = () => {
   const { id } = useParams(); // actually this is topic name like "Toán Cao Cấp"
@@ -18,7 +16,7 @@ const TopicDetails = () => {
   const fetchQuizzesByTopic = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/quizzes/topic/${encodeURIComponent(topicName)}`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/topic/${encodeURIComponent(topicName)}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

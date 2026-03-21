@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const ResetPassword = () => {
     const [searchParams] = useSearchParams();
@@ -22,7 +21,7 @@ const ResetPassword = () => {
             }
 
             try {
-                const response = await fetch(`http://localhost:5000/api/auth/verify-token?token=${token}`);
+                const response = await fetch(`${API_BASE_URL}/auth/verify-token?token=${token}`);
                 const data = await response.json();
                 
                 if (response.ok && data.valid) {
@@ -58,7 +57,7 @@ const ResetPassword = () => {
         }
 
         try {
-            const response = await fetch('http://localhost:5000/api/auth/reset-password', {
+            const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token, newPassword: formData.newPassword }),

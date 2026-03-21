@@ -1,6 +1,4 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import StartExamModal from '../components/StartExamModal';
+import API_BASE_URL from '../apiConfig';
 
 const QuizSearch = () => {
   const [quizCode, setQuizCode] = useState('');
@@ -15,7 +13,7 @@ const QuizSearch = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/quizzes/code/${quizCode}`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/code/${quizCode}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

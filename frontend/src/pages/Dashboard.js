@@ -1,7 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import StartExamModal from '../components/StartExamModal';
+import API_BASE_URL from '../apiConfig';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -17,7 +14,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       // Fetch user stats
-      const statsResponse = await fetch('http://localhost:5000/api/users/stats', {
+      const statsResponse = await fetch(`${API_BASE_URL}/users/stats`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -30,9 +27,9 @@ const Dashboard = () => {
       // Fetch recent quizzes
       let quizzesUrl = '';
       if (user.roleId === 3) { // Student
-        quizzesUrl = 'http://localhost:5000/api/quizzes/available';
+        quizzesUrl = `${API_BASE_URL}/quizzes/available`;
       } else { // Lecturer/Admin
-        quizzesUrl = 'http://localhost:5000/api/quizzes/my-quizzes?limit=8';
+        quizzesUrl = `${API_BASE_URL}/quizzes/my-quizzes?limit=8`;
       }
 
       const quizzesResponse = await fetch(quizzesUrl, {
@@ -46,7 +43,7 @@ const Dashboard = () => {
       }
 
       // Fetch leaderboard
-      const lbResponse = await fetch('http://localhost:5000/api/users/leaderboard', {
+      const lbResponse = await fetch(`${API_BASE_URL}/users/leaderboard`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -57,14 +54,14 @@ const Dashboard = () => {
       }
 
       // Fetch recent activity
-      const activityRes = await fetch('http://localhost:5000/api/users/recent-activity', {
+      const activityRes = await fetch(`${API_BASE_URL}/users/recent-activity`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const activityData = await activityRes.json();
       setRecentActivity(activityData.data || []);
 
       // Fetch trending topics
-      const trendingRes = await fetch('http://localhost:5000/api/topics/trending', {
+      const trendingRes = await fetch(`${API_BASE_URL}/topics/trending`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const trendingData = await trendingRes.json();

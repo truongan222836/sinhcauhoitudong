@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../apiConfig';
 
 const Profile = () => {
   const [user, setUser] = useState({
@@ -15,7 +15,7 @@ const Profile = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/users/profile', {
+        const response = await fetch(`${API_BASE_URL}/users/profile`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -39,7 +39,7 @@ const Profile = () => {
     const fetchHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/users/history', {
+        const response = await fetch(`${API_BASE_URL}/users/history`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -74,7 +74,7 @@ const Profile = () => {
         body.password = password;
       }
 
-      const response = await fetch('http://localhost:5000/api/users/profile', {
+      const response = await fetch(`${API_BASE_URL}/users/profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

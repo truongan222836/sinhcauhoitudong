@@ -1,3 +1,4 @@
+import API_BASE_URL from '../apiConfig';
 import React, { useState, useEffect } from 'react';
 
 const QuestionManager = () => {
@@ -44,7 +45,7 @@ const QuestionManager = () => {
 
   const fetchQuestions = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/questions/my-questions', {
+      const response = await fetch(`${API_BASE_URL}/questions/my-questions`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -64,7 +65,7 @@ const QuestionManager = () => {
   const handleDelete = async (questionId) => {
     if (!window.confirm('Bạn có chắc muốn xóa câu hỏi này?')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/questions/${questionId}`, {
+      const response = await fetch(`${API_BASE_URL}/questions/${questionId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -92,7 +93,7 @@ const QuestionManager = () => {
 
   const handleSaveEdit = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/questions/${editingQuestion}`, {
+      const response = await fetch(`${API_BASE_URL}/questions/${editingQuestion}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

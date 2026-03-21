@@ -1,8 +1,8 @@
-const { sql, config } = require("../config/db");
+const { pool } = require("../config/db");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-const SECRET_KEY = "AQG_SECRET_KEY_123"; // Nên lưu trong biến môi trường .env
+const SECRET_KEY = process.env.JWT_SECRET || "AQG_SECRET_KEY_123";
 
 exports.register = async (req, res) => {
     try {
@@ -12,21 +12,15 @@ exports.register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
 
-        await sql.connect(config);
-        const request = new sql.Request();
-
-        // Lấy RoleId dựa trên role string (client gửi 'lecturer' hoặc 'student')
-        // Mặc định là Student (3) nếu không khớp
+        // Lấy RoleId dựa trên role string
         let roleId = 3;
         if (role === 'lecturer') roleId = 2;
         if (role === 'admin') roleId = 1;
 
-        request.input("HoTen", sql.NVarChar, fullname);
-        request.input("Email", sql.VarChar, email);
-        request.input("MatKhauHash", sql.VarChar, hashedPassword);
-        request.input("VaiTroId", sql.Int, roleId);
-
-        await request.query("INSERT INTO NguoiDung (HoTen, Email, MatKhauHash, VaiTroId) VALUES (@HoTen, @Email, @MatKhauHash, @VaiTroId)");
+        await pool.query(
+            "INSERT INTO \"NguoiDung\" (\"HoTen\", \"Email\", \"MatKhauHash\", \"VaiTroId\") VALUES ($1, $2, $3, $4)",
+            [fullname, email, hashedPassword, roleId]
+        );
 
         res.status(201).json({ message: "Đăng ký thành công!" });
     } catch (err) {
@@ -40,12 +34,8 @@ exports.login = async (req, res) => {
         const { email, password } = req.body;
         console.log(`[Login] Attempt: ${email}`);
 
-        await sql.connect(config);
-        const request = new sql.Request();
-        request.input("Email", sql.VarChar, email);
-
-        const result = await request.query("SELECT * FROM NguoiDung WHERE Email = @Email");
-        const user = result.recordset[0];
+        const result = await pool.query("SELECT * FROM \"NguoiDung\" WHERE \"Email\" = $1", [email]);
+        const user = result.rows[0];
 
         if (!user) {
             return res.status(400).json({ message: "Email không tồn tại" });
@@ -74,12 +64,11 @@ exports.login = async (req, res) => {
 
 exports.getUserProfile = async (req, res) => {
     try {
-        await sql.connect(config);
-        const request = new sql.Request();
-        request.input("UserId", sql.Int, req.user.id);
-
-        const result = await request.query("SELECT NguoiDungId, HoTen, Email, VaiTroId FROM NguoiDung WHERE NguoiDungId = @UserId");
-        const user = result.recordset[0];
+        const result = await pool.query(
+            "SELECT \"NguoiDungId\", \"HoTen\", \"Email\", \"VaiTroId\" FROM \"NguoiDung\" WHERE \"NguoiDungId\" = $1",
+            [req.user.id]
+        );
+        const user = result.rows[0];
 
         if (user) {
             res.json(user);
@@ -95,24 +84,20 @@ exports.getUserProfile = async (req, res) => {
 exports.updateUserProfile = async (req, res) => {
     try {
         const { fullname, password } = req.body;
-
-        await sql.connect(config);
-        const request = new sql.Request();
-        request.input("UserId", sql.Int, req.user.id);
-        request.input("HoTen", sql.NVarChar, fullname);
-
-        let query = "UPDATE NguoiDung SET HoTen = @HoTen";
+        let query = "UPDATE \"NguoiDung\" SET \"HoTen\" = $1";
+        let params = [fullname];
 
         if (password) {
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(password, salt);
-            request.input("MatKhauHash", sql.VarChar, hashedPassword);
-            query += ", MatKhauHash = @MatKhauHash";
+            params.push(hashedPassword);
+            query += ", \"MatKhauHash\" = $" + params.length;
         }
 
-        query += " WHERE NguoiDungId = @UserId";
+        params.push(req.user.id);
+        query += " WHERE \"NguoiDungId\" = $" + params.length;
 
-        await request.query(query);
+        await pool.query(query, params);
 
         res.json({ message: "Cập nhật thông tin thành công!" });
 
@@ -127,42 +112,26 @@ exports.getUserStats = async (req, res) => {
         const userId = req.user.id;
         console.log(`[Stats API] Fetching stats for user ${userId}`);
 
-        const pool = await sql.connect(config);
-
-        // Kiểm tra role để trả về stats khác nhau
-        const userRequest = new sql.Request(pool);
-        userRequest.input("UserId", sql.Int, userId);
-        const userResult = await userRequest.query(`
-            SELECT VaiTroId FROM NguoiDung WHERE NguoiDungId = @UserId
-        `);
-        const roleId = userResult.recordset[0]?.VaiTroId || 3;
-        console.log(`[Stats API] User role: ${roleId}`);
+        const userResult = await pool.query("SELECT \"VaiTroId\" FROM \"NguoiDung\" WHERE \"NguoiDungId\" = $1", [userId]);
+        const roleId = userResult.rows[0]?.VaiTroId || 3;
 
         if (roleId === 3) {
             // === STATS CHO SINH VIÊN ===
-            const examRequest = new sql.Request(pool);
-            examRequest.input("UserId", sql.Int, userId);
-            const quizzes = await examRequest.query(`
-                SELECT b.BaiThiId, b.Diem, 
-                       (SELECT COUNT(*) FROM ChiTietBaiThi cbt WHERE cbt.BaiThiId = b.BaiThiId) as totalQuestions
-                FROM BaiThi b
-                WHERE b.NguoiDungId = @UserId AND b.TrangThai = N'Đã nộp'
-            `);
+            const quizzesRes = await pool.query(`
+                SELECT b."BaiThiId", b."Diem", 
+                       (SELECT COUNT(*) FROM "ChiTietBaiThi" cbt WHERE cbt."BaiThiId" = b."BaiThiId") as "totalQuestions"
+                FROM "BaiThi" b
+                WHERE b."NguoiDungId" = $1 AND b."TrangThai" = 'Đã nộp'
+            `, [userId]);
 
-            const exams = quizzes.recordset;
-            console.log(`[Stats API] Found ${exams.length} exams for student`);
-            
+            const exams = quizzesRes.rows;
             let totalScore = 0;
-            let totalQuestions = 0;
             let passCount = 0;
             
             exams.forEach(exam => {
-                const score = exam.Diem || 0;
-                const questions = exam.totalQuestions || 0;
+                const score = parseFloat(exam.Diem) || 0;
+                const questions = parseInt(exam.totalQuestions) || 0;
                 totalScore += score;
-                totalQuestions += questions;
-                
-                // Tính tỉ lệ: nếu score/questions >= 0.5 thì đạt
                 if (questions > 0 && (score / questions) >= 0.5) {
                     passCount++;
                 }
@@ -172,7 +141,7 @@ exports.getUserStats = async (req, res) => {
             const avgScore = examCount > 0 ? (totalScore / examCount).toFixed(2) : 0;
             const passRate = examCount > 0 ? ((passCount / examCount) * 100).toFixed(1) : 0;
 
-            const stats = {
+            res.json({
                 isStudent: true,
                 totalExams: examCount,
                 totalScore: totalScore.toFixed(2),
@@ -180,62 +149,30 @@ exports.getUserStats = async (req, res) => {
                 passRate: passRate,
                 passCount: passCount,
                 failCount: examCount - passCount
-            };
-            
-            console.log(`[Stats API] Returning student stats:`, stats);
-            res.json(stats);
+            });
         } else {
             // === STATS CHO GIÁO VIÊN/ADMIN ===
-            // Đếm số câu hỏi đã tạo
-            const qRequest = new sql.Request(pool);
-            qRequest.input("UserId", sql.Int, userId);
-            const questionsResult = await qRequest.query(`
-                SELECT COUNT(*) as totalQuestions 
-                FROM CauHoi 
-                WHERE NguoiTaoId = @UserId
-            `);
-
-            // Đếm số đề thi đã tạo
-            const dRequest = new sql.Request(pool);
-            dRequest.input("UserId", sql.Int, userId);
-            const quizzesResult = await dRequest.query(`
-                SELECT COUNT(*) as totalQuizzes 
-                FROM DeThi 
-                WHERE NguoiTaoId = @UserId
-            `);
-
-            // Đếm số lần sử dụng (bài thi đã nộp)
+            const questionsRes = await pool.query("SELECT COUNT(*) as \"totalQuestions\" FROM \"CauHoi\" WHERE \"NguoiTaoId\" = $1", [userId]);
+            const quizzesRes = await pool.query("SELECT COUNT(*) as \"totalQuizzes\" FROM \"DeThi\" WHERE \"NguoiTaoId\" = $1", [userId]);
+            
             let usageCount = 0;
             try {
-                const uRequest = new sql.Request(pool);
-                uRequest.input("UserId", sql.Int, userId);
-                const usageResult = await uRequest.query(`
-                    IF OBJECT_ID('BaiThi','U') IS NOT NULL
-                    BEGIN
-                        SELECT COUNT(*) as usageCount 
-                        FROM BaiThi 
-                        WHERE NguoiDungId = @UserId AND TrangThai = N'Đã nộp'
-                    END
-                    ELSE
-                        SELECT 0 as usageCount
-                `);
-                usageCount = usageResult.recordset[0].usageCount;
-            } catch (innerErr) {
-                console.warn("[Stats API] Cannot query BaiThi:", innerErr.message);
-                usageCount = 0;
+                const usageRes = await pool.query(
+                    "SELECT COUNT(*) as \"usageCount\" FROM \"BaiThi\" WHERE \"NguoiDungId\" = $1 AND \"TrangThai\" = 'Đã nộp'",
+                    [userId]
+                );
+                usageCount = usageRes.rows[0].usageCount;
+            } catch (e) {
+                console.warn("[Stats API] Cannot query BaiThi:", e.message);
             }
 
-            const stats = {
+            res.json({
                 isStudent: false,
-                totalQuestions: questionsResult.recordset[0].totalQuestions,
-                totalQuizzes: quizzesResult.recordset[0].totalQuizzes,
-                usageCount: usageCount
-            };
-            
-            console.log(`[Stats API] Returning lecturer stats:`, stats);
-            res.json(stats);
+                totalQuestions: parseInt(questionsRes.rows[0].totalQuestions),
+                totalQuizzes: parseInt(quizzesRes.rows[0].totalQuizzes),
+                usageCount: parseInt(usageCount)
+            });
         }
-
     } catch (err) {
         console.error("[Stats API] Error:", err);
         res.status(500).json({ message: "Lỗi khi lấy thống kê", error: err.message });
@@ -245,43 +182,27 @@ exports.getUserStats = async (req, res) => {
 exports.getUserHistory = async (req, res) => {
     try {
         const userId = req.user.id;
+        const result = await pool.query(`
+            SELECT 
+                b."BaiThiId",
+                d."TieuDe" as "quizTitle",
+                b."Diem" as score,
+                (SELECT COUNT(*) FROM "ChiTietBaiThi" cbt WHERE cbt."BaiThiId" = b."BaiThiId") as "totalQuestions",
+                b."NgayNop"
+            FROM "BaiThi" b
+            JOIN "DeThi" d ON b."DeThiId" = d."DeThiId"
+            WHERE b."NguoiDungId" = $1
+            ORDER BY b."NgayNop" DESC
+        `, [userId]);
 
-        await sql.connect(config);
-        const request = new sql.Request();
-        request.input("UserId", sql.Int, userId);
-
-        // nếu không có bảng BaiThi trả về mảng rỗng
-        const query = `
-            IF OBJECT_ID('BaiThi','U') IS NOT NULL
-            BEGIN
-                SELECT 
-                    b.BaiThiId,
-                    d.TieuDe as quizTitle,
-                    b.Diem as score,
-                    (SELECT COUNT(*) FROM ChiTietBaiThi cbt WHERE cbt.BaiThiId = b.BaiThiId) as totalQuestions,
-                    b.NgayNop
-                FROM BaiThi b
-                JOIN DeThi d ON b.DeThiId = d.DeThiId
-                WHERE b.NguoiDungId = @UserId
-                ORDER BY b.NgayNop DESC
-            END
-            ELSE
-                SELECT TOP 0 '' as quizTitle, 0 as score, 0 as totalQuestions, GETDATE() as NgayNop
-        `;
-
-        const result = await request.query(query);
-        console.log(`Lịch sử cho User ${userId}: found ${result.recordset.length} records`);
-
-        const history = result.recordset.map(item => ({
+        const history = result.rows.map(item => ({
             quizTitle: item.quizTitle,
             score: item.score || 0,
-            totalQuestions: item.totalQuestions || 0,
+            totalQuestions: parseInt(item.totalQuestions) || 0,
             completedAt: item.NgayNop
         }));
-        console.log("Mapped History:", JSON.stringify(history));
 
         res.json({ success: true, data: history });
-
     } catch (err) {
         console.error("Lỗi khi lấy lịch sử:", err);
         res.status(500).json({ message: "Lỗi khi lấy lịch sử làm bài", error: err.message });
@@ -290,20 +211,20 @@ exports.getUserHistory = async (req, res) => {
 
 exports.getLeaderboard = async (req, res) => {
     try {
-        const pool = await sql.connect(config);
-        const result = await pool.request().query(`
-            SELECT TOP 5 
-                u.NguoiDungId as userId,
-                u.HoTen as fullname, 
-                CAST(SUM(b.Diem) AS FLOAT) as totalPoints,
-                COUNT(b.BaiThiId) as examsCount
-            FROM NguoiDung u
-            JOIN BaiThi b ON u.NguoiDungId = b.NguoiDungId
-            WHERE b.TrangThai = N'Đã nộp'
-            GROUP BY u.NguoiDungId, u.HoTen
-            ORDER BY totalPoints DESC
+        const result = await pool.query(`
+            SELECT 
+                u."NguoiDungId" as "userId",
+                u."HoTen" as fullname, 
+                SUM(b."Diem")::FLOAT as "totalPoints",
+                COUNT(b."BaiThiId") as "examsCount"
+            FROM "NguoiDung" u
+            JOIN "BaiThi" b ON u."NguoiDungId" = b."NguoiDungId"
+            WHERE b."TrangThai" = 'Đã nộp'
+            GROUP BY u."NguoiDungId", u."HoTen"
+            ORDER BY "totalPoints" DESC
+            LIMIT 5
         `);
-        res.json({ success: true, data: result.recordset });
+        res.json({ success: true, data: result.rows });
     } catch (err) {
         console.error("Lỗi khi lấy bảng xếp hạng:", err);
         res.status(500).json({ message: "Lỗi khi lấy bảng xếp hạng", error: err.message });
@@ -312,21 +233,21 @@ exports.getLeaderboard = async (req, res) => {
 
 exports.getRecentActivity = async (req, res) => {
     try {
-        const pool = await sql.connect(config);
-        const result = await pool.request().query(`
-            SELECT TOP 5 
-                u.NguoiDungId as userId,
-                u.HoTen as fullname, 
-                d.TieuDe as quizTitle, 
-                b.NgayNop as time,
-                b.Diem as score
-            FROM BaiThi b
-            JOIN NguoiDung u ON b.NguoiDungId = u.NguoiDungId
-            JOIN DeThi d ON b.DeThiId = d.DeThiId
-            WHERE b.TrangThai = N'Đã nộp'
-            ORDER BY b.NgayNop DESC
+        const result = await pool.query(`
+            SELECT 
+                u."NguoiDungId" as "userId",
+                u."HoTen" as fullname, 
+                d."TieuDe" as "quizTitle", 
+                b."NgayNop" as time,
+                b."Diem" as score
+            FROM "BaiThi" b
+            JOIN "NguoiDung" u ON b."NguoiDungId" = u."NguoiDungId"
+            JOIN "DeThi" d ON b."DeThiId" = d."DeThiId"
+            WHERE b."TrangThai" = 'Đã nộp'
+            ORDER BY b."NgayNop" DESC
+            LIMIT 5
         `);
-        res.json({ success: true, data: result.recordset });
+        res.json({ success: true, data: result.rows });
     } catch (err) {
         console.error("Lỗi khi lấy hoạt động gần đây:", err);
         res.status(500).json({ message: "Lỗi khi lấy hoạt động gần đây", error: err.message });
@@ -336,44 +257,35 @@ exports.getRecentActivity = async (req, res) => {
 exports.getPublicProfile = async (req, res) => {
     try {
         const targetUserId = parseInt(req.params.id);
-        const pool = await sql.connect(config);
         
-        // 1. Get user info
-        const userResult = await pool.request()
-            .input("UserId", sql.Int, targetUserId)
-            .query("SELECT NguoiDungId, HoTen, Email, VaiTroId FROM NguoiDung WHERE NguoiDungId = @UserId");
+        const userResult = await pool.query(
+            "SELECT \"NguoiDungId\", \"HoTen\", \"Email\", \"VaiTroId\" FROM \"NguoiDung\" WHERE \"NguoiDungId\" = $1",
+            [targetUserId]
+        );
             
-        if (userResult.recordset.length === 0) {
+        if (userResult.rows.length === 0) {
             return res.status(404).json({ message: "User not found" });
         }
-        const user = userResult.recordset[0];
+        const user = userResult.rows[0];
 
-        // 2. Get their created quizzes (if lecturer/admin)
         let quizzes = [];
-        let totalCreated = 0;
         if (user.VaiTroId === 1 || user.VaiTroId === 2) {
-            const qResult = await pool.request()
-                .input("UserId", sql.Int, targetUserId)
-                .query(`
-                    SELECT DeThiId, TieuDe, ThoiGianLamBai, NgayTao 
-                    FROM DeThi 
-                    WHERE NguoiTaoId = @UserId AND DaXuatBan = 1
-                    ORDER BY NgayTao DESC
-                `);
-            quizzes = qResult.recordset;
-            totalCreated = quizzes.length;
+            const qResult = await pool.query(`
+                SELECT "DeThiId", "TieuDe", "ThoiGianLamBai", "NgayTao" 
+                FROM "DeThi" 
+                WHERE "NguoiTaoId" = $1 AND "DaXuatBan" = true
+                ORDER BY "NgayTao" DESC
+            `, [targetUserId]);
+            quizzes = qResult.rows;
         }
 
-        // 3. Get total points & exams done if student (or any)
-        const statsResult = await pool.request()
-            .input("UserId", sql.Int, targetUserId)
-            .query(`
-                 SELECT COUNT(b.BaiThiId) as examsCount, SUM(b.Diem) as totalPoints
-                 FROM BaiThi b
-                 WHERE b.NguoiDungId = @UserId AND b.TrangThai = N'Đã nộp'
-            `);
+        const statsResult = await pool.query(`
+             SELECT COUNT(b."BaiThiId") as "examsCount", SUM(b."Diem") as "totalPoints"
+             FROM "BaiThi" b
+             WHERE b."NguoiDungId" = $1 AND b."TrangThai" = 'Đã nộp'
+        `, [targetUserId]);
             
-        const stats = statsResult.recordset[0];
+        const stats = statsResult.rows[0];
 
         res.json({
             success: true,
@@ -385,9 +297,9 @@ exports.getPublicProfile = async (req, res) => {
                     roleId: user.VaiTroId
                 },
                 stats: {
-                    totalQuizzesCreated: totalCreated,
-                    examsCount: stats.examsCount || 0,
-                    totalPoints: stats.totalPoints || 0
+                    totalQuizzesCreated: quizzes.length,
+                    examsCount: parseInt(stats.examsCount) || 0,
+                    totalPoints: parseFloat(stats.totalPoints) || 0
                 },
                 quizzes: quizzes
             }

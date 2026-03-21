@@ -1,8 +1,8 @@
-const sql = require("mssql/msnodesqlv8");
+const { Pool } = require('pg');
 
-const config = {
-  connectionString: "Driver={ODBC Driver 17 for SQL Server};Server=.\\SQLEXPRESS;Database=HETHONGSINHCAUHOITUDONG;Trusted_Connection=yes;",
-  driver: "msnodesqlv8"
-};
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+});
 
-module.exports = { sql, config };
+module.exports = { pool };

@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const QuizAnalytics = () => {
   const { id } = useParams();
@@ -20,9 +19,9 @@ const QuizAnalytics = () => {
       const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
       
       const [statsRes, rankingRes, questionsRes] = await Promise.all([
-        fetch(`http://localhost:5000/api/quizzes/${id}/stats`, { headers }),
-        fetch(`http://localhost:5000/api/quizzes/${id}/ranking`, { headers }),
-        fetch(`http://localhost:5000/api/quizzes/${id}/question-stats`, { headers })
+        fetch(`${API_BASE_URL}/quizzes/${id}/stats`, { headers }),
+        fetch(`${API_BASE_URL}/quizzes/${id}/ranking`, { headers }),
+        fetch(`${API_BASE_URL}/quizzes/${id}/question-stats`, { headers })
       ]);
 
       const statsData = await statsRes.json();

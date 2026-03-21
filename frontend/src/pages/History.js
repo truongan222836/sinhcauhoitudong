@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../apiConfig';
 
 const History = () => {
   const [history, setHistory] = useState([]);
@@ -8,7 +8,7 @@ const History = () => {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/users/history', {
+        const response = await fetch(`${API_BASE_URL}/users/history`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }

@@ -1,4 +1,4 @@
-const { sql, config } = require("../config/db");
+const { pool } = require("../config/db");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
@@ -21,12 +21,8 @@ exports.forgotPassword = async (req, res) => {
             return res.status(400).json({ message: "Vui lòng cung cấp email" });
         }
 
-        const pool = await sql.connect(config);
-        const request = pool.request();
-        request.input("Email", sql.VarChar, email);
-
-        const userResult = await request.query("SELECT NguoiDungId, HoTen FROM NguoiDung WHERE Email = @Email");
-        const user = userResult.recordset[0];
+        const userResult = await pool.query("SELECT \"NguoiDungId\", \"HoTen\" FROM \"NguoiDung\" WHERE \"Email\" = $1", [email]);
+        const user = userResult.rows[0];
 
         if (!user) {
             return res.status(400).json({ message: "Email không tồn tại trong hệ thống" });
@@ -36,15 +32,10 @@ exports.forgotPassword = async (req, res) => {
         const resetToken = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
 
-        const tokenRequest = pool.request();
-        tokenRequest.input("UserId", sql.Int, user.NguoiDungId);
-        tokenRequest.input("ResetToken", sql.NVarChar, resetToken);
-        tokenRequest.input("ExpiresAt", sql.DateTime, expiresAt);
-
-        await tokenRequest.query(`
-            INSERT INTO PasswordResetTokens (user_id, reset_token, expires_at, used) 
-            VALUES (@UserId, @ResetToken, @ExpiresAt, 0)
-        `);
+        await pool.query(`
+            INSERT INTO "PasswordResetTokens" (user_id, reset_token, expires_at, used) 
+            VALUES ($1, $2, $3, false)
+        `, [user.NguoiDungId, resetToken, expiresAt]);
 
         // Gửi email chứa link
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
@@ -66,8 +57,6 @@ exports.forgotPassword = async (req, res) => {
             console.log("Email khôi phục đã gửi: ", resetUrl);
         } catch (mailError) {
             console.error("Lỗi gửi email:", mailError);
-            // Ghi log lỗi gửi mail nhưng vẫn tiếp tục luồng vì đây là demo (có thể cấu hình trong log server)
-            // Tốt nhất nếu lỗi mail thì ném luôn 500
             console.log("Reset URL in case email fails to send in dev:", resetUrl);
         }
 
@@ -80,6 +69,7 @@ exports.forgotPassword = async (req, res) => {
 };
 
 exports.resetPassword = async (req, res) => {
+    const client = await pool.connect();
     try {
         const { newPassword } = req.body;
         const tokenRecord = req.resetTokenData;
@@ -92,37 +82,32 @@ exports.resetPassword = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-        // Update mật khẩu và đánh dấu token đã dùng bằng transaction
-        const transaction = new sql.Transaction();
-        await transaction.begin();
+        await client.query('BEGIN');
 
         try {
-            const updatePasswordReq = new sql.Request(transaction);
-            updatePasswordReq.input("UserId", sql.Int, tokenRecord.user_id);
-            updatePasswordReq.input("MatKhauHash", sql.VarChar, hashedPassword);
-            await updatePasswordReq.query(`
-                UPDATE NguoiDung 
-                SET MatKhauHash = @MatKhauHash 
-                WHERE NguoiDungId = @UserId
-            `);
+            await client.query(`
+                UPDATE "NguoiDung" 
+                SET "MatKhauHash" = $1 
+                WHERE "NguoiDungId" = $2
+            `, [hashedPassword, tokenRecord.user_id]);
 
-            const updateTokenReq = new sql.Request(transaction);
-            updateTokenReq.input("TokenId", sql.Int, tokenRecord.token_id);
-            await updateTokenReq.query(`
-                UPDATE PasswordResetTokens 
-                SET used = 1 
-                WHERE token_id = @TokenId
-            `);
+            await client.query(`
+                UPDATE "PasswordResetTokens" 
+                SET used = true 
+                WHERE token_id = $1
+            `, [tokenRecord.token_id]);
 
-            await transaction.commit();
+            await client.query('COMMIT');
             res.status(200).json({ message: "Đổi mật khẩu thành công" });
         } catch (txError) {
-            await transaction.rollback();
+            await client.query('ROLLBACK');
             throw txError;
         }
 
     } catch (err) {
         console.error("Lỗi resetPassword:", err);
         res.status(500).json({ message: "Lỗi server", error: err.message });
+    } finally {
+        client.release();
     }
 };

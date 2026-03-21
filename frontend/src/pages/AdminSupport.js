@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../apiConfig';
 
 const AdminSupport = () => {
     const [requests, setRequests] = useState([]);
@@ -10,7 +10,7 @@ const AdminSupport = () => {
 
     const fetchSupportRequests = async () => {
         try {
-            const res = await fetch('http://localhost:5000/api/admin/support', {
+            const res = await fetch(`${API_BASE_URL}/admin/support`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 }
@@ -26,7 +26,7 @@ const AdminSupport = () => {
 
     const updateStatus = async (id, status) => {
         try {
-            await fetch(`http://localhost:5000/api/admin/support/${id}`, {
+            await fetch(`${API_BASE_URL}/admin/support/${id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',

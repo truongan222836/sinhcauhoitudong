@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const StartExamModal = ({ quiz, onClose }) => {
   const [formData, setFormData] = useState({
@@ -21,7 +20,7 @@ const StartExamModal = ({ quiz, onClose }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/quizzes/start', {
+      const response = await fetch(`${API_BASE_URL}/quizzes/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

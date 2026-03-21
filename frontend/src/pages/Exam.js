@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const Exam = () => {
   const { id } = useParams();
@@ -42,7 +41,7 @@ const Exam = () => {
 
   const fetchQuiz = async () => {
     try {
-      const resp = await fetch(`http://localhost:5000/api/quizzes/${id}`, {
+      const resp = await fetch(`${API_BASE_URL}/quizzes/${id}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const quizData = await resp.json();
@@ -61,7 +60,7 @@ const Exam = () => {
           studentId: localStorage.getItem('last_mssv') || ''
       };
 
-      const resumeResp = await fetch('http://localhost:5000/api/quizzes/start', {
+      const resumeResp = await fetch(`${API_BASE_URL}/quizzes/start`, {
           method: 'POST',
           headers: {
               'Content-Type': 'application/json',
@@ -105,7 +104,7 @@ const Exam = () => {
     // Save to server immediately or debounced
     try {
         const attemptId = localStorage.getItem(`attempt_${id}`);
-        await fetch('http://localhost:5000/api/quizzes/save-answer', {
+        await fetch(`${API_BASE_URL}/quizzes/save-answer`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -121,7 +120,7 @@ const Exam = () => {
   const handleSubmit = async () => {
     try {
       const attemptId = localStorage.getItem(`attempt_${id}`);
-      const response = await fetch(`http://localhost:5000/api/quizzes/${id}/submit`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/${id}/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

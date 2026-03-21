@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const Manage = () => {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ const Manage = () => {
 
   const fetchQuizzes = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/quizzes/my-quizzes', {
+      const response = await fetch(`${API_BASE_URL}/quizzes/my-quizzes`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -38,7 +39,7 @@ const Manage = () => {
   const handlePublish = async (quizId) => {
     if (!window.confirm("Bạn có chắc chắn muốn xuất bản đề thi này? Sau khi xuất bản sinh viên có thể làm bài.")) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/quizzes/${quizId}/publish`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}/publish`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -57,7 +58,7 @@ const Manage = () => {
   const handleDelete = async (quizId) => {
     if (!window.confirm('Bạn có chắc muốn xóa đề thi này? Hành động này không thể hoàn tác.')) return;
     try {
-      const response = await fetch(`http://localhost:5000/api/quizzes/${quizId}`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/${quizId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -84,7 +85,7 @@ const Manage = () => {
 
   const handleSaveEdit = async () => {
     try {
-      const response = await fetch(`http://localhost:5000/api/quizzes/${editingQuiz}`, {
+      const response = await fetch(`${API_BASE_URL}/quizzes/${editingQuiz}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -112,7 +113,7 @@ const Manage = () => {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:5000/api/exam/extend`, {
+      const response = await fetch(`${API_BASE_URL}/exam/extend`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

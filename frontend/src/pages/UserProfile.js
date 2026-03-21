@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import API_BASE_URL from '../apiConfig';
 
 const UserProfile = () => {
   const { id } = useParams();
@@ -14,7 +13,7 @@ const UserProfile = () => {
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/users/${id}/public-profile`, {
+      const response = await fetch(`${API_BASE_URL}/users/${id}/public-profile`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

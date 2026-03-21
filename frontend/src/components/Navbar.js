@@ -1,6 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import API_BASE_URL from '../apiConfig';
 
 const Navbar = () => {
   const { user } = useAuth();
@@ -14,7 +12,7 @@ const Navbar = () => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/notifications', {
+      const res = await fetch(`${API_BASE_URL}/notifications`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -28,7 +26,7 @@ const Navbar = () => {
 
   const markAsRead = async (id, link) => {
     try {
-      await fetch(`http://localhost:5000/api/notifications/read/${id}`, {
+      await fetch(`${API_BASE_URL}/notifications/read/${id}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`

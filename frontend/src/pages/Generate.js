@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import API_BASE_URL from '../apiConfig';
 import './Generate.css';
 
 const Generate = () => {
@@ -32,7 +33,7 @@ const Generate = () => {
 
   const fetchTopics = async () => {
     try {
-      const res = await fetch('http://localhost:5000/api/topics', {
+      const res = await fetch(`${API_BASE_URL}/topics`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -59,7 +60,7 @@ const Generate = () => {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:5000/api/upload/extract-text', {
+      const res = await fetch(`${API_BASE_URL}/upload/extract-text`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -89,7 +90,7 @@ const Generate = () => {
     setGeneratedQuestions([]);
 
     try {
-      const response = await fetch('http://localhost:5000/api/questions/generate', {
+      const response = await fetch(`${API_BASE_URL}/questions/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -121,7 +122,7 @@ const Generate = () => {
   const pollJobStatus = (jobId) => {
     const intervalId = setInterval(async () => {
       try {
-        const response = await fetch(`http://localhost:5000/api/questions/status/${jobId}`, {
+        const response = await fetch(`${API_BASE_URL}/questions/status/${jobId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -167,7 +168,7 @@ const Generate = () => {
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      const response = await fetch('http://localhost:5000/api/quizzes/create-from-generated', {
+      const response = await fetch(`${API_BASE_URL}/quizzes/create-from-generated`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -206,7 +207,7 @@ const Generate = () => {
   const handleRegenerateQuestion = async (index) => {
     setPreviewRegenerateIndex(index);
     try {
-      const response = await fetch('http://localhost:5000/api/questions/regenerate', {
+      const response = await fetch(`${API_BASE_URL}/questions/regenerate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

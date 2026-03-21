@@ -1,64 +1,56 @@
-const { sql, config } = require('../config/db');
+const { pool } = require('../config/db');
 
 exports.getTeacherAnalytics = async (req, res) => {
     try {
         const lecturerId = req.user.id;
-        const pool = await sql.connect(config);
-        
         const stats = {};
         
         // Total Exams Created
-        const exams = await pool.request()
-            .input('id', sql.Int, lecturerId)
-            .query("SELECT COUNT(*) as count FROM DeThi WHERE NguoiTaoId = @id");
-        stats.totalExams = exams.recordset[0].count;
+        const exams = await pool.query(
+            "SELECT COUNT(*) as count FROM \"DeThi\" WHERE \"NguoiTaoId\" = $1",
+            [lecturerId]
+        );
+        stats.totalExams = parseInt(exams.rows[0].count);
         
         // Total Attempts on their exams
-        const attempts = await pool.request()
-            .input('id', sql.Int, lecturerId)
-            .query(`
-                SELECT COUNT(b.BaiThiId) as count 
-                FROM BaiThi b 
-                JOIN DeThi d ON b.DeThiId = d.DeThiId 
-                WHERE d.NguoiTaoId = @id AND b.TrangThai = N'Đã nộp'
-            `);
-        stats.totalAttempts = attempts.recordset[0].count;
+        const attempts = await pool.query(`
+            SELECT COUNT(b."BaiThiId") as count 
+            FROM "BaiThi" b 
+            JOIN "DeThi" d ON b."DeThiId" = d."DeThiId" 
+            WHERE d."NguoiTaoId" = $1 AND b."TrangThai" = 'Đã nộp'
+        `, [lecturerId]);
+        stats.totalAttempts = parseInt(attempts.rows[0].count);
         
         // Average Score
-        const avgScore = await pool.request()
-            .input('id', sql.Int, lecturerId)
-            .query(`
-                SELECT AVG(b.Diem) as avg 
-                FROM BaiThi b 
-                JOIN DeThi d ON b.DeThiId = d.DeThiId 
-                WHERE d.NguoiTaoId = @id AND b.TrangThai = N'Đã nộp'
-            `);
-        stats.averageScore = avgScore.recordset[0].avg || 0;
+        const avgScore = await pool.query(`
+            SELECT AVG(b."Diem") as avg 
+            FROM "BaiThi" b 
+            JOIN "DeThi" d ON b."DeThiId" = d."DeThiId" 
+            WHERE d."NguoiTaoId" = $1 AND b."TrangThai" = 'Đã nộp'
+        `, [lecturerId]);
+        stats.averageScore = parseFloat(avgScore.rows[0].avg) || 0;
         
         // Most Popular Exam
-        const popular = await pool.request()
-            .input('id', sql.Int, lecturerId)
-            .query(`
-                SELECT TOP 1 d.TieuDe, COUNT(b.BaiThiId) as attemptCount 
-                FROM DeThi d 
-                LEFT JOIN BaiThi b ON d.DeThiId = b.DeThiId 
-                WHERE d.NguoiTaoId = @id 
-                GROUP BY d.TieuDe 
-                ORDER BY attemptCount DESC
-            `);
-        stats.mostPopularExam = popular.recordset[0] || { TieuDe: 'Chưa có dữ liệu', attemptCount: 0 };
+        const popular = await pool.query(`
+            SELECT d."TieuDe", COUNT(b."BaiThiId") as "attemptCount" 
+            FROM "DeThi" d 
+            LEFT JOIN "BaiThi" b ON d."DeThiId" = b."DeThiId" 
+            WHERE d."NguoiTaoId" = $1 
+            GROUP BY d."TieuDe" 
+            ORDER BY "attemptCount" DESC
+            LIMIT 1
+        `, [lecturerId]);
+        stats.mostPopularExam = popular.rows[0] || { TieuDe: 'Chưa có dữ liệu', attemptCount: 0 };
         
         // Attempts By Date (Last 7 days)
-        const byDate = await pool.request()
-            .input('id', sql.Int, lecturerId)
-            .query(`
-                SELECT CAST(NgayNop AS DATE) as date, COUNT(*) as count 
-                FROM BaiThi b 
-                JOIN DeThi d ON b.DeThiId = d.DeThiId 
-                WHERE d.NguoiTaoId = @id AND b.TrangThai = N'Đã nộp' AND NgayNop >= DATEADD(day, -7, GETDATE())
-                GROUP BY CAST(NgayNop AS DATE)
-                ORDER BY date ASC
-            `);
+        const byDate = await pool.query(`
+            SELECT CAST("NgayNop" AS DATE) as date, COUNT(*) as count 
+            FROM "BaiThi" b 
+            JOIN "DeThi" d ON b."DeThiId" = d."DeThiId" 
+            WHERE d."NguoiTaoId" = $1 AND b."TrangThai" = 'Đã nộp' AND "NgayNop" >= NOW() - INTERVAL '7 days'
+            GROUP BY CAST("NgayNop" AS DATE)
+            ORDER BY date ASC
+        `, [lecturerId]);
             
         // Map over last 7 days exactly
         const last7Days = [];
@@ -68,15 +60,17 @@ exports.getTeacherAnalytics = async (req, res) => {
             const dateStr = d.toISOString().split('T')[0];
             
             // Find if existing in queried data
-            const existing = byDate.recordset.find(row => {
+            const existing = byDate.rows.find(row => {
                 const rowDate = new Date(row.date);
-                rowDate.setMinutes(rowDate.getMinutes() - rowDate.getTimezoneOffset());
+                // Adjust for timezone offset to match dateStr
+                const offset = rowDate.getTimezoneOffset();
+                rowDate.setMinutes(rowDate.getMinutes() - offset);
                 return rowDate.toISOString().split('T')[0] === dateStr;
             });
             
             last7Days.push({
                 date: dateStr,
-                count: existing ? existing.count : 0
+                count: existing ? parseInt(existing.count) : 0
             });
         }
         
