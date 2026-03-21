@@ -49,6 +49,7 @@ async function callGeminiRaw(prompt, apiKey) {
         }, { timeout: 60000 });
 
         const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        console.log(`[AI-SERVICE] Gemini Raw Content: ${resultText ? resultText.substring(0, 500) : 'EMPTY'}`);
         const parsed = JSON.parse(cleanJsonString(resultText));
         return Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
     } catch (error) {
