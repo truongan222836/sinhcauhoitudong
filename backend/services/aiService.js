@@ -8,6 +8,7 @@ const openaiLimiter = new Bottleneck({ minTime: 1000, maxConcurrent: 1 });
 const groqLimiter = new Bottleneck({ minTime: 2000, maxConcurrent: 1 });
 
 const GEMINI_MODEL = 'gemini-1.5-flash'; 
+const GEMINI_API_VERSION = 'v1';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
@@ -41,7 +42,7 @@ Vietnamese language only. No generic content.`;
 // ── GEMINI CALLER ──────────────────────────────────────────────
 async function callGeminiRaw(prompt, apiKey) {
     if (!apiKey || apiKey.includes('xxx')) return null;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
     try {
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }],
