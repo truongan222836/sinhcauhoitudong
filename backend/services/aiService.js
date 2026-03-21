@@ -7,7 +7,7 @@ const geminiLimiter = new Bottleneck({ minTime: 6000, maxConcurrent: 1 });
 const openaiLimiter = new Bottleneck({ minTime: 1000, maxConcurrent: 1 });
 const groqLimiter = new Bottleneck({ minTime: 2000, maxConcurrent: 1 });
 
-const GEMINI_MODEL = 'gemini-1.5-flash'; 
+const GEMINI_MODEL = 'gemini-pro'; 
 const GEMINI_API_VERSION = 'v1';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
