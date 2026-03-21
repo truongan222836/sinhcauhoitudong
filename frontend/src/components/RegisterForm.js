@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import API_BASE_URL from '../apiConfig';
 
 const RegisterForm = ({ setActiveTab }) => {

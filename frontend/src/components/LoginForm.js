@@ -1,3 +1,5 @@
+import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import API_BASE_URL from '../apiConfig';
 
 const LoginForm = ({ setActiveTab }) => {

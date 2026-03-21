@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import API_BASE_URL from '../apiConfig';
 import './Generate.css';
 
