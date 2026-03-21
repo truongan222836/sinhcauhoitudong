@@ -140,6 +140,7 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
             console.log(`[AI-SERVICE] Batch ${i + 1}/${totalBatches} (lần thử ${attempt + 1})`);
             
             for (const provider of providersInOrder) {
+                console.log(`[AI-SERVICE] Attempting Provider: ${provider.toUpperCase()}`);
                 try {
                     let result = null;
                     if (provider === 'gemini') {
