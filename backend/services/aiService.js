@@ -1,6 +1,7 @@
 const axios = require("axios");
 const Bottleneck = require("bottleneck");
 const { runPipeline } = require('./questionPipeline');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Giới hạn call API
 const geminiLimiter = new Bottleneck({ minTime: 6000, maxConcurrent: 1 });
