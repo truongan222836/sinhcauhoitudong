@@ -12,7 +12,7 @@ const AdminUsers = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/admin/users', {
+      const res = await fetch('http://localhost:5000/api/admin/users', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -25,7 +25,7 @@ const AdminUsers = () => {
 
   const handleCreateOrUpdate = async (e) => {
     e.preventDefault();
-    const url = editingUser ? `http://localhost:3000/api/admin/users/${editingUser.id}` : 'http://localhost:3000/api/admin/users';
+    const url = editingUser ? `http://localhost:5000/api/admin/users/${editingUser.id}` : 'http://localhost:5000/api/admin/users';
     const method = editingUser ? 'PUT' : 'POST';
     
     try {
@@ -51,7 +51,7 @@ const AdminUsers = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa?')) return;
     try {
-      const res = await fetch(`http://localhost:3000/api/admin/users/${id}`, {
+      const res = await fetch(`http://localhost:5000/api/admin/users/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });

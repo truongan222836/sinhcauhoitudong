@@ -13,16 +13,31 @@ exports.getAllTopics = async (req, res) => {
 exports.getTrendingTopics = async (req, res) => {
     try {
         const pool = await sql.connect(config);
-        //Trending logic = most attempts
+        //Trending logic = sum of questions created and times exams were taken
         const result = await pool.request().query(`
-            SELECT TOP 5 c.ChuDeId as id, TRIM(c.TenChuDe) as name, COUNT(q.CauHoiId) as questionCount
-            FROM ChuDe c 
-            LEFT JOIN CauHoi q ON c.ChuDeId = q.ChuDeId 
-            GROUP BY c.ChuDeId, c.TenChuDe 
+            SELECT TOP 5 
+                c.ChuDeId as id, 
+                TRIM(c.TenChuDe) as name, 
+                (
+                    ISNULL(q_count.cnt, 0) + ISNULL(b_count.cnt, 0)
+                ) as questionCount
+            FROM ChuDe c
+            LEFT JOIN (
+                SELECT ChuDeId, COUNT(*) as cnt 
+                FROM CauHoi 
+                GROUP BY ChuDeId
+            ) q_count ON c.ChuDeId = q_count.ChuDeId
+            LEFT JOIN (
+                SELECT d.ChuDeId, COUNT(*) as cnt 
+                FROM BaiThi b
+                JOIN DeThi d ON b.DeThiId = d.DeThiId
+                GROUP BY d.ChuDeId
+            ) b_count ON c.ChuDeId = b_count.ChuDeId
             ORDER BY questionCount DESC
         `);
         res.json({ success: true, data: result.recordset });
     } catch (err) {
+        console.error("Lỗi getTrendingTopics:", err);
         res.status(500).json({ success: false, message: err.message });
     }
 };

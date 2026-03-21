@@ -21,7 +21,9 @@ GO
 -- Insert dữ liệu VaiTro nếu chưa có
 IF NOT EXISTS (SELECT * FROM VaiTro)
 BEGIN
+    SET IDENTITY_INSERT VaiTro ON;
     INSERT INTO VaiTro (VaiTroId, TenVaiTro) VALUES (1, 'Admin'), (2, 'Giảng viên'), (3, 'Sinh viên');
+    SET IDENTITY_INSERT VaiTro OFF;
 END
 GO
 
@@ -41,8 +43,10 @@ GO
 -- Thêm dữ liệu mẫu NguoiDung nếu chưa có
 IF NOT EXISTS (SELECT * FROM NguoiDung WHERE Email = 'admin@example.com')
 BEGIN
-    INSERT INTO NguoiDung (HoTen, Email, MatKhauHash, VaiTroId)
-    VALUES ('Admin', 'admin@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1);
+    SET IDENTITY_INSERT NguoiDung ON;
+    INSERT INTO NguoiDung (NguoiDungId, HoTen, Email, MatKhauHash, VaiTroId)
+    VALUES (1, 'Admin', 'admin@example.com', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1);
+    SET IDENTITY_INSERT NguoiDung OFF;
 END
 GO
 
@@ -73,7 +77,8 @@ GO
 -- Insert dữ liệu LoaiCauHoi nếu chưa có
 IF NOT EXISTS (SELECT * FROM LoaiCauHoi)
 BEGIN
-    INSERT INTO LoaiCauHoi (LoaiId, TenLoai) VALUES (1, 'Trắc nghiệm'), (2, 'Tự luận'), (3, 'Điền khuyết');
+    INSERT INTO LoaiCauHoi (TenLoai, MaLoai, LoaiId) 
+    VALUES (N'Trắc nghiệm', 'TN', 1), (N'Tự luận', 'TL', 2), (N'Điền khuyết', 'DK', 3);
 END
 GO
 
@@ -155,6 +160,35 @@ BEGIN
         reset_token NVARCHAR(255),
         expires_at DATETIME,
         used BIT DEFAULT 0
+    );
+END
+GO
+
+-- Tạo bảng Notifications nếu chưa có
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Notifications' AND xtype='U')
+BEGIN
+    CREATE TABLE Notifications (
+        notification_id INT PRIMARY KEY IDENTITY(1,1),
+        user_id INT FOREIGN KEY REFERENCES NguoiDung(NguoiDungId),
+        title NVARCHAR(255) NOT NULL,
+        message NVARCHAR(MAX) NOT NULL,
+        link NVARCHAR(255),
+        is_read BIT DEFAULT 0,
+        created_at DATETIME DEFAULT GETDATE()
+    );
+END
+GO
+
+-- Tạo bảng SupportRequests nếu chưa có
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SupportRequests' AND xtype='U')
+BEGIN
+    CREATE TABLE SupportRequests (
+        support_id INT PRIMARY KEY IDENTITY(1,1),
+        user_id INT FOREIGN KEY REFERENCES NguoiDung(NguoiDungId),
+        title NVARCHAR(255) NOT NULL,
+        message NVARCHAR(MAX) NOT NULL,
+        status NVARCHAR(50) DEFAULT N'Chờ xử lý',
+        created_at DATETIME DEFAULT GETDATE()
     );
 END
 GO

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 const Support = () => {
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  const [message, setMessage] = useState('');
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -10,19 +10,19 @@ const Support = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:3000/api/support', {
+      const response = await fetch('http://localhost:5000/api/support', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ title, content })
+        body: JSON.stringify({ title, message })
       });
       const data = await response.json();
       if (response.ok) {
         setStatus({ type: 'success', message: data.message });
         setTitle('');
-        setContent('');
+        setMessage('');
       } else {
         setStatus({ type: 'error', message: data.message || 'Lỗi gửi yêu cầu' });
       }
@@ -68,8 +68,8 @@ const Support = () => {
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Mô tả chi tiết</label>
             <textarea 
               placeholder="Ghi rõ vấn đề bạn đang gặp phải, đính kèm link hoặc mã đề thi nếu có..."
-              value={content} 
-              onChange={(e) => setContent(e.target.value)} 
+              value={message} 
+              onChange={(e) => setMessage(e.target.value)} 
               required 
               style={{ width: '100%', padding: '14px', borderRadius: '12px', border: '1px solid var(--border)', minHeight: '150px', fontSize: '15px', fontFamily: 'inherit' }}
             />

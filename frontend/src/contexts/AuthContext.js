@@ -18,12 +18,22 @@ export const AuthProvider = ({ children }) => {
         const userString = localStorage.getItem('user');
 
         if (token && userString) {
-            setUser(JSON.parse(userString));
+            try {
+                setUser(JSON.parse(userString));
+            } catch (error) {
+                console.error("Failed to parse user from localStorage:", error);
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+            }
         }
         setLoading(false);
     }, []);
 
     const login = (userData, token) => {
+        if (!userData || !token) {
+            console.error("Login failed: missing user or token", { userData, token });
+            return;
+        }
         localStorage.setItem('user', JSON.stringify(userData));
         localStorage.setItem('token', token);
         setUser(userData);

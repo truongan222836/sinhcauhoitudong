@@ -20,9 +20,9 @@ const QuizAnalytics = () => {
       const headers = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
       
       const [statsRes, rankingRes, questionsRes] = await Promise.all([
-        fetch(`http://localhost:3000/api/quizzes/${id}/stats`, { headers }),
-        fetch(`http://localhost:3000/api/quizzes/${id}/ranking`, { headers }),
-        fetch(`http://localhost:3000/api/quizzes/${id}/question-stats`, { headers })
+        fetch(`http://localhost:5000/api/quizzes/${id}/stats`, { headers }),
+        fetch(`http://localhost:5000/api/quizzes/${id}/ranking`, { headers }),
+        fetch(`http://localhost:5000/api/quizzes/${id}/question-stats`, { headers })
       ]);
 
       const statsData = await statsRes.json();

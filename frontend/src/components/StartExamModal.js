@@ -21,7 +21,7 @@ const StartExamModal = ({ quiz, onClose }) => {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:3000/api/quizzes/start', {
+      const response = await fetch('http://localhost:5000/api/quizzes/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

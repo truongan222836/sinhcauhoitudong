@@ -14,7 +14,7 @@ const UserProfile = () => {
   const fetchProfile = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:3000/api/users/${id}/public-profile`, {
+      const response = await fetch(`http://localhost:5000/api/users/${id}/public-profile`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

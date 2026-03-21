@@ -8,6 +8,8 @@ const Generate = () => {
   const [quantity, setQuantity] = useState(5);
   const [generatedQuestions, setGeneratedQuestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [generateProgress, setGenerateProgress] = useState(0); 
+  const [pollIntervalId, setPollIntervalId] = useState(null);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const [quizTitle, setQuizTitle] = useState('');
@@ -20,14 +22,17 @@ const Generate = () => {
   const [previewRegenerateIndex, setPreviewRegenerateIndex] = useState(null);
   const [topics, setTopics] = useState([]);
   const [selectedTopic, setSelectedTopic] = useState('');
-
+  const [isExtracting, setIsExtracting] = useState(false);
   useEffect(() => {
     fetchTopics();
-  }, []);
+    return () => {
+      if (pollIntervalId) clearInterval(pollIntervalId);
+    };
+  }, [pollIntervalId]);
 
   const fetchTopics = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/topics', {
+      const res = await fetch('http://localhost:5000/api/topics', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -37,14 +42,54 @@ const Generate = () => {
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Check size limit (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('File quá lớn, vui lòng chọn file dưới 10MB.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setIsExtracting(true);
+    setError('');
+
+    try {
+      const res = await fetch('http://localhost:5000/api/upload/extract-text', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+      const data = await res.json();
+      if (data.success) {
+        setText(data.data);
+      } else {
+        setError(data.message || 'Lỗi trích xuất file');
+      }
+    } catch (err) {
+      setError('Lỗi máy chủ khi trích xuất file');
+    } finally {
+      setIsExtracting(false);
+      // Reset input file value to allow re-uploading the same file
+      e.target.value = null;
+    }
+  };
+
   const handleGenerate = async () => {
     setIsLoading(true);
     setError('');
     setWarning('');
+    setGenerateProgress(0);
     setGeneratedQuestions([]);
 
     try {
-      const response = await fetch('http://localhost:3000/api/questions/generate', {
+      const response = await fetch('http://localhost:5000/api/questions/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,21 +106,58 @@ const Generate = () => {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Không thể sinh câu hỏi.');
+        throw new Error(data.message || 'Không thể bắt đầu tác vụ sinh câu hỏi.');
       }
 
-      if (data.warning) {
-        setWarning(data.warning); 
+      if (data.jobId) {
+        pollJobStatus(data.jobId);
       }
-
-      setGeneratedQuestions(data.data);
-      setShowPreview(true); 
     } catch (err) {
       setError(err.message);
-    } finally {
       setIsLoading(false);
     }
   };
+
+  const pollJobStatus = (jobId) => {
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/api/questions/status/${jobId}`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+           clearInterval(intervalId);
+           setError(data.message || 'Lỗi khi kiểm tra tiến trình.');
+           setIsLoading(false);
+           return;
+        }
+
+        const job = data.job;
+        setGenerateProgress(job.progress || 0);
+
+        if (job.status === 'Completed') {
+           clearInterval(intervalId);
+           setIsLoading(false);
+           if (job.warning) setWarning(job.warning);
+           setGeneratedQuestions(job.data);
+           setShowPreview(true);
+        } else if (job.status === 'Failed') {
+           clearInterval(intervalId);
+           setIsLoading(false);
+           setError(job.error || 'Qúa trình sinh câu hỏi thất bại.');
+        }
+
+      } catch (err) {
+        console.error('Lỗi khi polling:', err);
+      }
+    }, 3000); // Check every 3 seconds
+
+    setPollIntervalId(intervalId);
+  };
+
 
   const handleSaveQuiz = async () => {
     if (!quizTitle) {
@@ -85,7 +167,7 @@ const Generate = () => {
     setIsSaving(true);
     setSaveMessage(null);
     try {
-      const response = await fetch('http://localhost:3000/api/quizzes/create-from-generated', {
+      const response = await fetch('http://localhost:5000/api/quizzes/create-from-generated', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +206,7 @@ const Generate = () => {
   const handleRegenerateQuestion = async (index) => {
     setPreviewRegenerateIndex(index);
     try {
-      const response = await fetch('http://localhost:3000/api/questions/regenerate', {
+      const response = await fetch('http://localhost:5000/api/questions/regenerate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -384,11 +466,19 @@ const Generate = () => {
             )}
 
             <div className="q-footer-actions">
-              <button className="btn-sm btn-edit" onClick={() => handleEditQuestion(index)}>Tiểu chỉnh</button>
-              <button className="btn-sm btn-regen" onClick={() => handleRegenerateQuestion(index)}>
-                {previewRegenerateIndex === index ? 'Đang xoay...' : '🔄 Sinh lại câu này'}
+              <button className="btn-sm btn-edit" onClick={() => handleEditQuestion(index)}>
+                <span>✏️</span> Tiểu chỉnh
               </button>
-              <button className="btn-sm btn-del" onClick={() => handleDeleteQuestion(index)}>🗑 Xóa</button>
+              <button className="btn-sm btn-regen" onClick={() => handleRegenerateQuestion(index)} disabled={previewRegenerateIndex === index}>
+                {previewRegenerateIndex === index ? (
+                  <><div className="spinner" style={{ borderTopColor: '#166534', borderLeftColor: '#166534' }}></div> Đang sinh lại...</>
+                ) : (
+                  <><span>🔄</span> Sinh lại câu này</>
+                )}
+              </button>
+              <button className="btn-sm btn-del" onClick={() => handleDeleteQuestion(index)}>
+                <span>🗑️</span> Xóa câu hỏi
+              </button>
             </div>
           </div>
         ))}
@@ -413,7 +503,14 @@ const Generate = () => {
               className="gen-input"
               value={duration}
               min="1"
-              onChange={(e) => setDuration(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                 let val = parseInt(e.target.value, 10);
+                 if (isNaN(val)) val = '';
+                 setDuration(val);
+              }}
+              onBlur={() => {
+                 if (duration === '' || duration < 1) setDuration(60);
+              }}
             />
           </div>
 
@@ -450,11 +547,27 @@ const Generate = () => {
 
       <div className="gen-card">
         <div className="input-group">
-          <label className="input-label">1. Nhập văn bản tài liệu của bạn</label>
+          <label className="input-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>1. Nhập văn bản tài liệu của bạn hoặc tải lên file (.txt, .pdf, .docx)</span>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="file"
+                accept=".txt,.pdf,.docx"
+                onChange={handleFileUpload}
+                disabled={isExtracting}
+                id="file-upload"
+                style={{ display: 'none' }}
+              />
+              <label htmlFor="file-upload" className="btn-secondary" style={{ cursor: isExtracting ? 'not-allowed' : 'pointer', opacity: isExtracting ? 0.7 : 1, padding: '6px 12px', fontSize: '0.85rem' }}>
+                {isExtracting ? 'Đang trích xuất...' : 'Tải file lên'}
+              </label>
+            </div>
+          </label>
           <textarea
             className="gen-textarea"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            disabled={isExtracting}
             placeholder="Dán nội dung tài liệu lịch sử, khoa học, bài giảng... Hệ thống sẽ AI sẽ đọc hiểu và trích xuất câu hỏi từ đây."
           ></textarea>
         </div>
@@ -498,7 +611,15 @@ const Generate = () => {
               type="number"
               className="gen-input"
               value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                 let val = parseInt(e.target.value, 10);
+                 if (isNaN(val)) val = '';
+                 setQuantity(val);
+              }}
+              onBlur={() => {
+                 if (quantity === '' || quantity < 1) setQuantity(1);
+                 else if (quantity > 100) setQuantity(100);
+              }}
               min="1"
               max="100"
             />
@@ -507,9 +628,16 @@ const Generate = () => {
 
         <button onClick={handleGenerate} disabled={isLoading || !text} className="gen-btn">
           {isLoading ? (
-            <>
-               <div className="spinner"></div> {quantity > 90 ? 'Hệ thống đang sinh số lượng lớn, có thể mất 1-2 phút...' : 'Hệ thống AI đang phân tích dữ liệu...'}
-            </>
+             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div className="spinner"></div> Đang gọi AI xử lý tự động...
+                </div>
+                {generateProgress > 0 && (
+                  <div style={{ width: '100%', maxWidth: '300px', background: 'rgba(255,255,255,0.2)', borderRadius: '10px', height: '6px', overflow: 'hidden' }}>
+                     <div style={{ width: `${generateProgress}%`, height: '100%', background: '#fff', transition: 'width 0.3s ease' }}></div>
+                  </div>
+                )}
+             </div>
           ) : (
             '🚀 Bắt Đầu Sinh Câu Hỏi'
           )}

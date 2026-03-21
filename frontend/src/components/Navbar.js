@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const Navbar = () => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [showNotif, setShowNotif] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchNotifications();
@@ -13,7 +14,7 @@ const Navbar = () => {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/notifications', {
+      const res = await fetch('http://localhost:5000/api/notifications', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -25,15 +26,19 @@ const Navbar = () => {
     }
   };
 
-  const markAsRead = async (id) => {
+  const markAsRead = async (id, link) => {
     try {
-      await fetch(`http://localhost:3000/api/notifications/${id}/read`, {
-        method: 'PATCH',
+      await fetch(`http://localhost:5000/api/notifications/read/${id}`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: true } : n));
+      setShowNotif(false);
+      if (link) {
+        navigate(link);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -90,13 +95,17 @@ const Navbar = () => {
           
           {/* Notifications Dropdown */}
           {showNotif && (
-            <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '10px', background: 'white', width: '300px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', overflow: 'hidden', zIndex: 100 }}>
-              <div style={{ padding: '15px 20px', borderBottom: '1px solid var(--border)', fontWeight: 'bold' }}>Thông báo</div>
-              <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '10px', background: 'white', width: '320px', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)', overflow: 'hidden', zIndex: 100 }}>
+              <div style={{ padding: '15px 20px', borderBottom: '1px solid var(--border)', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Thông báo</span>
+                {unreadCount > 0 && <span style={{ fontSize: '11px', color: 'var(--primary)' }}>{unreadCount} chưa đọc</span>}
+              </div>
+              <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
                 {notifications.length > 0 ? (
                   notifications.map(n => (
-                    <div key={n.id} onClick={() => markAsRead(n.id)} style={{ padding: '15px', borderBottom: '1px solid var(--border)', background: n.isRead ? 'transparent' : 'rgba(49, 92, 255, 0.05)', cursor: 'pointer', transition: 'background 0.2s' }}>
-                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: n.isRead ? 'var(--text-secondary)' : 'var(--text-primary)', fontWeight: n.isRead ? 'normal' : '600' }}>{n.text}</p>
+                    <div key={n.id} onClick={() => markAsRead(n.id, n.link)} style={{ padding: '15px', borderBottom: '1px solid var(--border)', background: n.isRead ? 'transparent' : 'rgba(49, 92, 255, 0.05)', cursor: 'pointer', transition: 'background 0.2s', borderLeft: n.isRead ? '4px solid transparent' : '4px solid var(--primary)' }}>
+                      <p style={{ margin: '0 0 5px 0', fontSize: '14px', color: 'var(--text-primary)', fontWeight: n.isRead ? '600' : '800' }}>{n.title}</p>
+                      <p style={{ margin: '0 0 8px 0', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>{n.message}</p>
                       <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{new Date(n.time).toLocaleString('vi-VN')}</span>
                     </div>
                   ))

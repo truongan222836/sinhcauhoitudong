@@ -1,20 +1,22 @@
-const Groq = require("groq-sdk");
 const axios = require("axios");
+const Bottleneck = require("bottleneck");
+const { runPipeline } = require('./questionPipeline');
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Giới hạn call API
+const geminiLimiter = new Bottleneck({ minTime: 6000, maxConcurrent: 1 });
+const openaiLimiter = new Bottleneck({ minTime: 1000, maxConcurrent: 1 });
+const groqLimiter = new Bottleneck({ minTime: 2000, maxConcurrent: 1 });
+
+const GEMINI_MODEL = 'gemini-1.5-flash'; 
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-/**
- * Clean AI response to ensure it's valid JSON
- */
 function cleanJsonString(str) {
     try {
-        // Remove markdown blocks if present
         let cleaned = str.replace(/```json/g, '').replace(/```/g, '').trim();
-        // Sometimes AI adds text before or after JSON
         const start = cleaned.indexOf('[');
         const end = cleaned.lastIndexOf(']');
         if (start !== -1 && end !== -1) {
@@ -27,194 +29,155 @@ function cleanJsonString(str) {
 }
 
 function getPrompt(text, type, quantity, difficulty) {
-    const difficultyMap = {
-        'Dễ': 'dễ, tập trung vào kiến thức cơ bản',
-        'Khó': 'khó, yêu cầu tư duy phản biện và tổng hợp',
-        'Trung bình': 'trung bình, yêu cầu hiểu và áp dụng'
-    };
-    const diff = difficultyMap[difficulty] || difficultyMap['Trung bình'];
-
-    const commonTail = `
-Yêu cầu QUAN TRỌNG:
-- Ngôn ngữ: Tiếng Việt.
-- Độ khó: ${diff}.
-- Chỉ trả về DUY NHẤT một JSON array. Không kèm text giải thích.
-- Format JSON phải chuẩn, không có lỗi syntax.`;
-
-    if (type === 'Trắc nghiệm') {
-        return `Từ nội dung: "${text}"
-Hãy tạo ${quantity} câu hỏi trắc nghiệm. 
-JSON Format: [{"question": "...", "options": ["A. ...", "B. ...", "C. ...", "D. ..."], "correctAnswer": "Câu trả lời đúng trong 4 lựa chọn trên"}]
-${commonTail}`;
-    } else if (type === 'Tự luận') {
-        return `Từ nội dung: "${text}"
-Hãy tạo ${quantity} câu hỏi tự luận. 
-JSON Format: [{"question": "...", "answer": "..."}]
-${commonTail}`;
-    } else {
-        return `Từ nội dung: "${text}"
-Hãy tạo ${quantity} câu hỏi điền vào chỗ trống. Dùng "____" cho chỗ trống.
-JSON Format: [{"question": "Nội dung ____ chỗ trống.", "blanks": ["đáp án"]}]
-${commonTail}`;
-    }
+    const difficultyMap = { 'Dễ': 'dễ', 'Khó': 'khó', 'Trung bình': 'trung bình' };
+    const diff = difficultyMap[difficulty] || 'trung bình';
+    return `Task: Generate ${quantity} educational questions in Vietnamese from text.
+Text: """${text}"""
+Type: ${type}, Difficulty: ${diff}
+Output ONLY JSON array format: [{"question": "...", "options": {"A": "...", "B": "...", "C": "...", "D": "..."}, "correctAnswer": "A"}]
+Vietnamese language only. No generic content.`;
 }
 
-async function callGemini(prompt, apiKey) {
-    if (!apiKey) throw new Error("Missing Gemini Key");
+// ── GEMINI CALLER ──────────────────────────────────────────────
+async function callGeminiRaw(prompt, apiKey) {
+    if (!apiKey || apiKey.includes('xxx')) return null;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
     try {
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { 
-                temperature: 0.8, // Slightly higher temp for more randomness
-                maxOutputTokens: 4096,
-                responseMimeType: "application/json" 
-            }
-        }, { timeout: 60000 }); 
-        
-        let resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!resultText) throw new Error("Gemini empty response");
-        return JSON.parse(cleanJsonString(resultText));
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
+        }, { timeout: 60000 });
+
+        const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const parsed = JSON.parse(cleanJsonString(resultText));
+        return Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
     } catch (error) {
-        if (error.response) {
-            console.error("Gemini API Error Detail:", JSON.stringify(error.response.data));
+        if (error.response && error.response.status === 429) {
+            const err = new Error("GEMINI_429");
+            const match = JSON.stringify(error.response.data).match(/retry in ([\d.]+)s/);
+            err.retryAfter = match ? Math.ceil(parseFloat(match[1])) : 30;
+            throw err;
         }
-        throw error;
+        return null;
     }
 }
+const callGemini = geminiLimiter.wrap(callGeminiRaw);
 
-async function callGroq(prompt, apiKey) {
-    if (!apiKey) throw new Error("Missing Groq Key");
-    const groq = new Groq({ apiKey });
-    const completion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: prompt }],
-        model: "llama-3.3-70b-versatile",
-        temperature: 0.7,
-        response_format: { type: "json_object" }
-    });
-    const raw = completion.choices[0].message.content;
-    const parsed = JSON.parse(cleanJsonString(raw));
-    if (Array.isArray(parsed)) return parsed;
-    return parsed.questions || parsed.data || Object.values(parsed).find(v => Array.isArray(v)) || [];
+// ── OPENAI CALLER ──────────────────────────────────────────────
+async function callOpenAIRaw(prompt, apiKey) {
+    if (!apiKey || apiKey.includes('xxx')) return null;
+    try {
+        const response = await axios.post(OPENAI_URL, {
+            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }
+        }, { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 45000 });
+
+        const parsed = response.data.choices[0].message.content;
+        const json = JSON.parse(cleanJsonString(parsed));
+        return Array.isArray(json) ? json : (json.questions || json.data || [json]);
+    } catch (e) {
+        return null;
+    }
 }
+const callOpenAI = openaiLimiter.wrap(callOpenAIRaw);
 
+// ── GROQ CALLER ────────────────────────────────────────────────
+async function callGroqRaw(prompt, apiKey) {
+    if (!apiKey || apiKey.includes('xxx')) return null;
+    try {
+        const response = await axios.post(GROQ_URL, {
+            model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }
+        }, { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 45000 });
+
+        const parsed = response.data.choices[0].message.content;
+        const json = JSON.parse(cleanJsonString(parsed));
+        return Array.isArray(json) ? json : (json.questions || json.data || [json]);
+    } catch (e) {
+        return null;
+    }
+}
+const callGroq = groqLimiter.wrap(callGroqRaw);
+
+// ── OLLAMA CALLER ──────────────────────────────────────────────
 async function callOllama(prompt) {
-    const response = await axios.post(OLLAMA_URL, {
-        model: OLLAMA_MODEL,
-        prompt: prompt,
-        stream: false,
-        format: "json"
-    }, { timeout: 120000 });
-    const parsed = JSON.parse(cleanJsonString(response.data.response));
-    if (Array.isArray(parsed)) return parsed;
-    return parsed.questions || parsed.data || [];
-}
-
-function localFallback(text, type, quantity) {
-    const sentences = text.split(/[\.!\?]\s+/).filter(s => s.trim().length > 10);
-    const results = [];
-    const optionLabels = ["A", "B", "C", "D"];
-    
-    for (let i = 0; i < quantity; i++) {
-        const s = sentences[i % sentences.length] || "Thông tin từ văn bản";
-        if (type === 'Trắc nghiệm') {
-            const correctIdx = Math.floor(Math.random() * 4);
-            const options = [
-                "Nội dung được đề cập trực tiếp",
-                "Thông tin này không chính xác",
-                "Vấn đề này đang được tranh luận",
-                "Chưa có kết luận cụ thể"
-            ];
-            // Rotate options to randomize
-            const rotatedOptions = options.map((opt, idx) => `${optionLabels[idx]}. ${opt}`);
-            
-            results.push({
-                question: `Phát biểu nào sau đây là đúng về "${s.substring(0, 50)}..."?`,
-                options: rotatedOptions,
-                correctAnswer: rotatedOptions[correctIdx]
-            });
-        } else if (type === 'Tự luận') {
-            results.push({
-                question: `Phân tích ý nghĩa của đoạn sau: "${s}"`,
-                answer: "Học sinh cần tóm tắt và nêu được ý chính của đoạn văn."
-            });
-        } else {
-            const words = s.split(' ');
-            const idx = Math.floor(words.length / 2);
-            const word = words[idx];
-            results.push({
-                question: s.replace(word, "____"),
-                blanks: [word]
-            });
-        }
+    try {
+        const response = await axios.post(OLLAMA_URL, {
+            model: process.env.OLLAMA_MODEL || 'llama3',
+            prompt: prompt, stream: false, format: "json"
+        }, { timeout: 60000 });
+        const json = JSON.parse(cleanJsonString(response.data.response));
+        return Array.isArray(json) ? json : (json.questions || [json]);
+    } catch (e) {
+        return null;
     }
-    return results;
 }
 
-exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bình') => {
-    const BATCH_SIZE = 5; // Smaller batch for more stability (especially for long content)
-    let allQuestions = [];
+// ── MAIN PIPELINE ──────────────────────────────────────────────
+exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bình', onProgress = null) => {
+    const BATCH_SIZE = 5;
+    let allPassedQuestions = [];
+    let existingNorms = [];
     const totalBatches = Math.ceil(quantity / BATCH_SIZE);
-
-    console.log(`[AI-SERVICE] Generating ${quantity} questions in ${totalBatches} batches.`);
+    const providersInOrder = (process.env.PRIMARY_AI || 'gemini,openai,groq,ollama').split(',').map(s => s.trim().toLowerCase());
 
     for (let i = 0; i < totalBatches; i++) {
-        const currentQty = Math.min(BATCH_SIZE, quantity - allQuestions.length);
+        if (onProgress) onProgress(Math.round((i / totalBatches) * 100));
+        const currentQty = Math.min(BATCH_SIZE, quantity - allPassedQuestions.length);
         if (currentQty <= 0) break;
 
         const prompt = getPrompt(text, type, currentQty, difficulty);
-        let batchData = null;
+        let batchRaw = null;
         let attempt = 0;
-        const maxRetries = 2;
 
-        while (attempt <= maxRetries && !batchData) {
-            try {
-                console.log(`[AI-SERVICE] Batch ${i + 1}/${totalBatches} (Attempt ${attempt + 1})`);
-                
-                // Try Providers sequentially
+        while (attempt < 2 && !batchRaw) {
+            console.log(`[AI-SERVICE] Batch ${i + 1}/${totalBatches} (lần thử ${attempt + 1})`);
+            
+            for (const provider of providersInOrder) {
                 try {
-                    batchData = await callGemini(prompt, process.env.GEMINI_API_KEY);
+                    let result = null;
+                    if (provider === 'gemini') result = await callGemini(prompt, process.env.GEMINI_API_KEY);
+                    else if (provider === 'openai') result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
+                    else if (provider === 'groq') result = await callGroq(prompt, process.env.GROQ_API_KEY);
+                    else if (provider === 'ollama') result = await callOllama(prompt);
+
+                    if (result && Array.isArray(result) && result.length > 0) {
+                        batchRaw = result;
+                        console.log(`[AI-SERVICE] Dùng ${provider.toUpperCase()} thành công.`);
+                        break;
+                    }
                 } catch (e) {
-                    console.warn("Gemini failed, trying Groq...", e.message);
-                    try {
-                        batchData = await callGroq(prompt, process.env.GROQ_API_KEY);
-                    } catch (e2) {
-                        console.warn("Groq failed, trying Ollama...", e2.message);
-                        batchData = await callOllama(prompt);
+                    if (e.message === "GEMINI_429") {
+                        console.warn(`[AI-SERVICE] Gemini 429. Chờ ${e.retryAfter}s...`);
+                        await sleep(e.retryAfter * 1000);
                     }
                 }
-
-                if (Array.isArray(batchData)) {
-                    allQuestions = allQuestions.concat(batchData);
-                } else {
-                    batchData = null; // trigger retry or fallback
-                }
-            } catch (err) {
-                console.error(`Error in batch ${i + 1}:`, err.message);
-                attempt++;
-                if (attempt <= maxRetries) await sleep(2000);
             }
+            if (batchRaw) break;
+            attempt++;
+            if (!batchRaw) await sleep(2000 * attempt);
         }
 
-        // If batch still null after retries, use local fallback for this batch
-        if (!batchData) {
-            console.error(`Batch ${i + 1} failed all AI providers. Using local fallback.`);
-            allQuestions = allQuestions.concat(localFallback(text, type, currentQty));
+        if (batchRaw) {
+            const { questions: batchPassed, updatedNorms } = runPipeline(batchRaw, type, existingNorms);
+            existingNorms = updatedNorms;
+            allPassedQuestions = allPassedQuestions.concat(batchPassed);
         }
-
-        if (i < totalBatches - 1) await sleep(1000); // Cool down
+        await sleep(1000);
     }
 
-    // Final Mapping & ID assignment
-    return allQuestions.slice(0, quantity).map((q, index) => ({
-        id: index + 1,
-        question: q.question || 'Không lấy được nội dung câu hỏi',
-        type: type,
-        ...(type === 'Trắc nghiệm' && {
-            options: Array.isArray(q.options) ? q.options : ["A", "B", "C", "D"],
-            correctAnswer: q.correctAnswer || (q.options ? q.options[0] : "A")
-        }),
-        ...(type === 'Tự luận' && { answer: q.answer || 'Vui lòng xem lời giải trong bài' }),
-        ...(type === 'Điền khuyết' && { blanks: Array.isArray(q.blanks) ? q.blanks : ["..."] })
-    }));
+    return allPassedQuestions.slice(0, quantity).map((q, index) => {
+        const normalized = { id: index + 1, question: q.question || 'N/A', type: type };
+        if (type === 'Trắc nghiệm') {
+            const opts = q.options || {};
+            const optVals = Array.isArray(opts) ? opts : ['A', 'B', 'C', 'D'].map(k => opts[k]).filter(Boolean);
+            const correctKey = String(q.correctAnswer || q.correct || 'A').toUpperCase().charAt(0);
+            normalized.options = optVals.map(o => String(o).replace(/^[A-H]\.\s*/, ''));
+            normalized.correctAnswer = (Array.isArray(opts) ? String(q.correctAnswer || optVals[0]) : (opts[correctKey] || optVals[0])).replace(/^[A-H]\.\s*/, '');
+        } else if (type === 'Tự luận') normalized.answer = q.answer || 'Vui lòng xem lời giải.';
+        else if (type === 'Điền khuyết') normalized.blanks = Array.isArray(q.blanks) ? q.blanks : ["..."];
+        return normalized;
+    });
 };

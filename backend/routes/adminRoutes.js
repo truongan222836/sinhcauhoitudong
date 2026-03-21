@@ -12,5 +12,7 @@ router.put('/users/:id', adminController.updateUser);
 router.delete('/users/:id', adminController.deleteUser);
 
 router.get('/stats', adminController.getSystemStats);
+router.get('/support', adminController.getSupportRequests);
+router.patch('/support/:id', adminController.updateSupportStatus);
 
 module.exports = router;

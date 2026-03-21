@@ -1,5 +1,8 @@
 const { sql, config } = require("../config/db");
 const { generateQuestions: generateAIQuestions } = require("../services/aiService");
+const { v4: uuidv4 } = require('uuid');
+
+const generateJobs = new Map();
 
 exports.generateQuestions = async (req, res) => {
     try {
@@ -19,33 +22,65 @@ exports.generateQuestions = async (req, res) => {
             return res.status(400).json({ message: "Số lượng câu hỏi phải từ 1 đến 100." });
         }
 
-        // giới hạn độ dài văn bản để tránh prompt quá lớn
+        // mở rộng giới hạn văn bản đầu vào
         let processedText = text;
-        const MAX_CHARS = 3000;
+        const MAX_CHARS = 15000;
         let warning = null;
         if (text.length > MAX_CHARS) {
             processedText = text.slice(0, MAX_CHARS);
-            warning = `Văn bản quá dài (${text.length} ký tự); đã cắt còn ${MAX_CHARS} ký tự để sinh câu hỏi.`;
+            warning = `Văn bản quá dài (${text.length} ký tự); đã cắt bớt còn ${MAX_CHARS} ký tự để tối ưu xử lý.`;
             console.warn('[generateQuestions] ' + warning);
         }
 
-        const questions = await generateAIQuestions(processedText, type, quantity, difficulty);
+        const jobId = uuidv4();
+        generateJobs.set(jobId, { status: 'Pending', progress: 0 });
 
-        const responsePayload = { success: true, data: questions };
-        if (warning) responsePayload.warning = warning;
+        // Run background worker
+        (async () => {
+            try {
+                generateJobs.get(jobId).status = 'Processing';
+                const questions = await generateAIQuestions(processedText, type, quantity, difficulty, (progress) => {
+                    if (generateJobs.has(jobId)) {
+                        generateJobs.get(jobId).progress = progress;
+                    }
+                });
 
-        res.json(responsePayload);
+                if (generateJobs.has(jobId)) {
+                    generateJobs.set(jobId, { status: 'Completed', progress: 100, data: questions, warning });
+                }
+            } catch (err) {
+                console.error('Job failed:', err);
+                if (generateJobs.has(jobId)) {
+                    const isRateLimit = err.message && err.message.startsWith('API_RATE_LIMIT');
+                    generateJobs.set(jobId, { 
+                        status: 'Failed', 
+                        error: isRateLimit ? '⏳ API Gemini AI đã đạt giới hạn sử dụng hoặc quá tải. Hãy thử lại.' : err.message 
+                    });
+                }
+            }
+        })();
+
+        res.json({ success: true, jobId, message: "Hệ thống đang xử lý sinh câu hỏi, vui lòng đợi..." });
     } catch (err) {
         console.error('Lỗi trong generateQuestions:', err);
-        if (err.message && err.message.startsWith('API_RATE_LIMIT')) {
-            return res.status(429).json({ 
-                success: false,
-                message: '⏳ API Gemini AI đã đạt giới hạn sử dụng miễn phí hôm nay. Vui lòng thử lại sau ít phút hoặc liên lạc admin để nâng cấp API key.' 
-            });
-        }
-        res.status(500).json({ success: false, message: 'Lỗi khi sinh câu hỏi: ' + err.message });
+        res.status(500).json({ success: false, message: 'Lỗi khởi tạo job: ' + err.message });
     }
 };
+
+exports.getJobStatus = (req, res) => {
+    const { jobId } = req.params;
+    const job = generateJobs.get(jobId);
+    if (!job) {
+        return res.status(404).json({ success: false, message: 'Không tìm thấy tiến trình xử lý.' });
+    }
+    
+    res.json({ success: true, job });
+    if (job.status === 'Completed' || job.status === 'Failed') {
+        // Tự dọn dẹp job sau 5 phút để tránh rò rỉ bộ nhớ
+        setTimeout(() => generateJobs.delete(jobId), 5 * 60 * 1000);
+    }
+};
+
 
 exports.regenerateQuestion = async (req, res) => {
     try {

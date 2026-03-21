@@ -15,7 +15,7 @@ const QuizSearch = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/api/quizzes/code/${quizCode}`, {
+      const response = await fetch(`http://localhost:5000/api/quizzes/code/${quizCode}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

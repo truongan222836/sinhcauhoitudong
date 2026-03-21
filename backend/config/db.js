@@ -1,14 +1,8 @@
 const sql = require("mssql/msnodesqlv8");
 
 const config = {
-  server: "TruongAn\\SQLEXPRESS02",   // 🔥 QUAN TRỌNG
-  database: "HETHONGSINHCAUHOITUDONG",
-  driver: "msnodesqlv8",
-  options: {
-    trustedConnection: true,
-    encrypt: false,
-    trustServerCertificate: true
-  }
+  connectionString: "Driver={ODBC Driver 17 for SQL Server};Server=.\\SQLEXPRESS;Database=HETHONGSINHCAUHOITUDONG;Trusted_Connection=yes;",
+  driver: "msnodesqlv8"
 };
 
 module.exports = { sql, config };

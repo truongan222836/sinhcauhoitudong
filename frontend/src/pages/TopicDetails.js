@@ -18,7 +18,7 @@ const TopicDetails = () => {
   const fetchQuizzesByTopic = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`http://localhost:3000/api/quizzes/topic/${encodeURIComponent(topicName)}`, {
+      const response = await fetch(`http://localhost:5000/api/quizzes/topic/${encodeURIComponent(topicName)}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }

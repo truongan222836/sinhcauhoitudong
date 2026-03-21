@@ -38,6 +38,7 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+        console.log(`[Login] Attempt: ${email}`);
 
         await sql.connect(config);
         const request = new sql.Request();
@@ -58,6 +59,7 @@ exports.login = async (req, res) => {
         // Tạo token
         const token = jwt.sign({ id: user.NguoiDungId, roleId: user.VaiTroId }, SECRET_KEY, { expiresIn: "1h" });
 
+        console.log(`[Login] Success: ${email}`);
         res.json({
             message: "Đăng nhập thành công",
             token,
@@ -65,8 +67,8 @@ exports.login = async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Lỗi server" });
+        console.error(`[Login] Error for ${req.body.email}:`, err);
+        res.status(500).json({ message: "Lỗi server", error: err.message });
     }
 };
 

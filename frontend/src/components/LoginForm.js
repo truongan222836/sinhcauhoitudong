@@ -17,12 +17,24 @@ const LoginForm = ({ setActiveTab }) => {
         e.preventDefault();
         setMessage('');
         try {
-            const response = await fetch('http://localhost:3000/api/users/login', {
+            const response = await fetch('http://localhost:5000/api/users/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData),
             });
-            const data = await response.json();
+            
+            console.log("Response Status:", response.status);
+            const text = await response.text();
+            console.log("Response Body:", text);
+
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                console.error("Failed to parse JSON:", e);
+                throw new Error("Dữ liệu phản hồi từ server không hợp lệ.");
+            }
+
             if (!response.ok) {
                 throw new Error(data.message || 'Đăng nhập thất bại.');
             }

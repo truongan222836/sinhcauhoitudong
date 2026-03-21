@@ -17,7 +17,7 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       // Fetch user stats
-      const statsResponse = await fetch('http://localhost:3000/api/users/stats', {
+      const statsResponse = await fetch('http://localhost:5000/api/users/stats', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -30,9 +30,9 @@ const Dashboard = () => {
       // Fetch recent quizzes
       let quizzesUrl = '';
       if (user.roleId === 3) { // Student
-        quizzesUrl = 'http://localhost:3000/api/quizzes/available';
+        quizzesUrl = 'http://localhost:5000/api/quizzes/available';
       } else { // Lecturer/Admin
-        quizzesUrl = 'http://localhost:3000/api/quizzes/my-quizzes?limit=8';
+        quizzesUrl = 'http://localhost:5000/api/quizzes/my-quizzes?limit=8';
       }
 
       const quizzesResponse = await fetch(quizzesUrl, {
@@ -46,7 +46,7 @@ const Dashboard = () => {
       }
 
       // Fetch leaderboard
-      const lbResponse = await fetch('http://localhost:3000/api/users/leaderboard', {
+      const lbResponse = await fetch('http://localhost:5000/api/users/leaderboard', {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -57,14 +57,14 @@ const Dashboard = () => {
       }
 
       // Fetch recent activity
-      const activityRes = await fetch('http://localhost:3000/api/users/recent-activity', {
+      const activityRes = await fetch('http://localhost:5000/api/users/recent-activity', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const activityData = await activityRes.json();
       setRecentActivity(activityData.data || []);
 
       // Fetch trending topics
-      const trendingRes = await fetch('http://localhost:3000/api/topics/trending', {
+      const trendingRes = await fetch('http://localhost:5000/api/topics/trending', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const trendingData = await trendingRes.json();

@@ -15,7 +15,7 @@ const Profile = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/users/profile', {
+        const response = await fetch('http://localhost:5000/api/users/profile', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -39,7 +39,7 @@ const Profile = () => {
     const fetchHistory = async () => {
       setHistoryLoading(true);
       try {
-        const response = await fetch('http://localhost:3000/api/users/history', {
+        const response = await fetch('http://localhost:5000/api/users/history', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`
           }
@@ -74,7 +74,7 @@ const Profile = () => {
         body.password = password;
       }
 
-      const response = await fetch('http://localhost:3000/api/users/profile', {
+      const response = await fetch('http://localhost:5000/api/users/profile', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

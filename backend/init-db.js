@@ -4,17 +4,19 @@ const fs = require("fs");
 async function initDatabase() {
     try {
         console.log("Connecting to database...");
-        await sql.connect(config);
+        // Dùng database master để chạy script tạo DB nếu cần
+        const masterConfig = { ...config, database: 'master' };
+        await sql.connect(masterConfig);
 
         console.log("Reading SQL file...");
-        const sqlContent = fs.readFileSync("./init-db.sql", "utf8");
+        const sqlContent = fs.readFileSync("./init-db-conditional.sql", "utf8");
 
         console.log("Executing SQL script...");
         const queries = sqlContent.split("GO").filter(q => q.trim());
 
         for (const query of queries) {
             if (query.trim()) {
-                console.log("Executing:", query.substring(0, 50) + "...");
+                console.log("Executing:", query.substring(0, 50).replace(/\n/g, ' ') + "...");
                 await new sql.Request().query(query);
             }
         }

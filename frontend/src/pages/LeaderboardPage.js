@@ -10,7 +10,7 @@ const LeaderboardPage = () => {
 
   const fetchLeaderboard = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/users/leaderboard', {
+      const res = await fetch('http://localhost:5000/api/users/leaderboard', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();

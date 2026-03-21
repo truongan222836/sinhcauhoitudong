@@ -105,3 +105,37 @@ exports.getSystemStats = async (req, res) => {
         res.status(500).json({ success: false, message: err.message });
     }
 };
+
+// --- QUẢN LÝ HỖ TRỢ ---
+
+exports.getSupportRequests = async (req, res) => {
+    try {
+        const pool = await sql.connect(config);
+        const result = await pool.request().query(`
+            SELECT s.*, u.HoTen as fullname, u.Email as email 
+            FROM SupportRequests s 
+            JOIN NguoiDung u ON s.user_id = u.NguoiDungId 
+            ORDER BY s.created_at DESC
+        `);
+        res.json({ success: true, data: result.recordset });
+    } catch (err) {
+        console.error("Lỗi khi lấy yêu cầu hỗ trợ:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};
+
+exports.updateSupportStatus = async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+    try {
+        const pool = await sql.connect(config);
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('status', sql.NVarChar, status)
+            .query("UPDATE SupportRequests SET status = @status WHERE support_id = @id");
+        res.json({ success: true, message: "Cập nhật trạng thái thành công" });
+    } catch (err) {
+        console.error("Lỗi khi cập nhật trạng thái hỗ trợ:", err);
+        res.status(500).json({ success: false, message: err.message });
+    }
+};

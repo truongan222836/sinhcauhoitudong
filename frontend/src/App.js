@@ -18,6 +18,7 @@ import TopicDetails from "./pages/TopicDetails";
 import UserProfile from "./pages/UserProfile";
 import AdminUsers from "./pages/AdminUsers";
 import AdminStats from "./pages/AdminStats";
+import AdminSupport from "./pages/AdminSupport";
 import TeacherAnalytics from "./pages/TeacherAnalytics";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import QuizAnalytics from "./pages/QuizAnalytics";
@@ -58,6 +59,7 @@ function App() {
             <Route element={<ProtectedRoute allowedRoles={[1]} />}>
               <Route path="/admin/users" element={<AdminUsers />} />
               <Route path="/admin/statistics" element={<AdminStats />} />
+              <Route path="/admin/support" element={<AdminSupport />} />
             </Route>
 
             {/* Routes chỉ cho Sinh viên (3) */}

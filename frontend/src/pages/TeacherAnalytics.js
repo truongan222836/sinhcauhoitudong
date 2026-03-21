@@ -12,7 +12,7 @@ const TeacherAnalytics = () => {
 
   const fetchAnalytics = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/teacher/analytics', {
+      const res = await fetch('http://localhost:5000/api/teacher/analytics', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
@@ -25,7 +25,7 @@ const TeacherAnalytics = () => {
 
   const fetchExams = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/quizzes/my-quizzes', {
+      const res = await fetch('http://localhost:5000/api/quizzes/my-quizzes', {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
