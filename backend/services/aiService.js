@@ -46,7 +46,7 @@ async function callGeminiRaw(prompt, apiKey) {
     try {
         const response = await axios.post(url, {
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
+            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
         }, { timeout: 60000 });
 
         const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
