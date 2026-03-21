@@ -1,5 +1,12 @@
 # sinhcauhoitudong
 
+# 🚀 LIVE DEMO
+- **Đường link hệ thống:** [https://sinhcauhoitudongaqq.vercel.app/](https://sinhcauhoitudongaqq-git-deploy-truongans-projects-7478d469.vercel.app/)
+- **Tài khoản Admin:** `admin@gmail.com`
+- **Mật khẩu:** `123456`
+
+---
+
 # 🎓 ĐỀ TÀI
 
 ## **Hệ thống sinh câu hỏi tự động (AQG – Automatic Question Generation)**
@@ -29,7 +36,7 @@ Frontend (React)
         ↓ API
 Backend (NodeJS + Express)
         ↓
-Database (SQL Server)
+Database (SQL Server / PostgreSQL Cloud)
 ```
 
 
