@@ -29,6 +29,7 @@ exports.generateQuestions = async (req, res) => {
         }
 
         const jobId = uuidv4();
+        console.log(`[Job] Created: ${jobId} for user ${req.user?.id}`);
         generateJobs.set(jobId, { status: 'Pending', progress: 0 });
 
         // Run background worker
@@ -66,13 +67,19 @@ exports.generateQuestions = async (req, res) => {
 exports.getJobStatus = (req, res) => {
     const { jobId } = req.params;
     const job = generateJobs.get(jobId);
+    
     if (!job) {
+        console.warn(`[Job] 404 Not Found: ${jobId}. Current Map Size: ${generateJobs.size}`);
         return res.status(404).json({ success: false, message: 'Không tìm thấy tiến trình xử lý.' });
     }
     
+    console.log(`[Job] Status Check: ${jobId} - ${job.status} (${job.progress}%)`);
     res.json({ success: true, job });
     if (job.status === 'Completed' || job.status === 'Failed') {
-        setTimeout(() => generateJobs.delete(jobId), 5 * 60 * 1000);
+        setTimeout(() => {
+            console.log(`[Job] Cleanup: ${jobId}`);
+            generateJobs.delete(jobId);
+        }, 5 * 60 * 1000);
     }
 };
 
