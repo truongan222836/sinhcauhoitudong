@@ -43,26 +43,24 @@ Vietnamese language only. No generic content.`;
 
 // ── GEMINI CALLER ──────────────────────────────────────────────
 async function callGeminiRaw(prompt, apiKey) {
-    if (!apiKey || apiKey.includes('xxx')) return null;
-    const url = `https://generativelanguage.googleapis.com/${GEMINI_API_VERSION}/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+    if (!apiKey || apiKey.includes('xxx')) {
+        console.warn('[AI-SERVICE][GEMINI] Invalid or missing API Key');
+        return null;
+    }
     try {
-        const response = await axios.post(url, {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
-        }, { timeout: 60000 });
-
-        const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        console.log(`[AI-SERVICE] Gemini Raw Content: ${resultText ? resultText.substring(0, 500) : 'EMPTY'}`);
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+        
+        console.log(`[AI-SERVICE][GEMINI] Requesting model via SDK: ${GEMINI_MODEL}`);
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const resultText = response.text();
+        
+        console.log(`[AI-SERVICE] Gemini Raw Content (first 100): ${resultText ? resultText.substring(0, 100) : 'EMPTY'}`);
         const parsed = JSON.parse(cleanJsonString(resultText));
         return Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
     } catch (error) {
-        if (error.response && error.response.status === 429) {
-            const err = new Error("GEMINI_429");
-            const match = JSON.stringify(error.response.data).match(/retry in ([\d.]+)s/);
-            err.retryAfter = match ? Math.ceil(parseFloat(match[1])) : 30;
-            throw err;
-        }
-        console.error(`[AI-SERVICE] Gemini Error: ${error.message}`, error.response?.data);
+        console.error(`[AI-SERVICE] Gemini SDK Error: ${error.message}`);
         return null;
     }
 }
