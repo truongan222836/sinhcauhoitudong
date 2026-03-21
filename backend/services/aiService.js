@@ -7,8 +7,8 @@ const geminiLimiter = new Bottleneck({ minTime: 6000, maxConcurrent: 1 });
 const openaiLimiter = new Bottleneck({ minTime: 1000, maxConcurrent: 1 });
 const groqLimiter = new Bottleneck({ minTime: 2000, maxConcurrent: 1 });
 
-const GEMINI_MODEL = 'gemini-pro'; 
-const GEMINI_API_VERSION = 'v1';
+const GEMINI_MODEL = 'gemini-1.5-flash'; 
+const GEMINI_API_VERSION = 'v1beta';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
@@ -69,18 +69,25 @@ const callGemini = geminiLimiter.wrap(callGeminiRaw);
 
 // ── OPENAI CALLER ──────────────────────────────────────────────
 async function callOpenAIRaw(prompt, apiKey) {
-    if (!apiKey || apiKey.includes('xxx')) return null;
+    if (!apiKey || apiKey.includes('xxx')) {
+        console.warn('[AI-SERVICE][OPENAI] Invalid or placeholder API Key');
+        return null;
+    }
     try {
+        const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+        console.log(`[AI-SERVICE][OPENAI] Requesting model: ${model}`);
         const response = await axios.post(OPENAI_URL, {
-            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+            model: model,
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" }
         }, { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 45000 });
 
         const parsed = response.data.choices[0].message.content;
+        console.log(`[AI-SERVICE][OPENAI] Raw Response (first 100 char): ${parsed.substring(0, 100)}...`);
         const json = JSON.parse(cleanJsonString(parsed));
         return Array.isArray(json) ? json : (json.questions || json.data || [json]);
     } catch (e) {
+        console.error(`[AI-SERVICE] OpenAI Error: ${e.message}`, e.response?.data || 'No extra data');
         return null;
     }
 }
