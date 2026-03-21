@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
-const { sql, config } = require("../config/db");
-const SECRET_KEY = "AQG_SECRET_KEY_123";
+const { pool } = require("../config/db");
+const SECRET_KEY = process.env.JWT_SECRET || "AQG_SECRET_KEY_123";
 
 const protect = (req, res, next) => {
     let token;
@@ -11,6 +11,7 @@ const protect = (req, res, next) => {
             req.user = decoded;
             next();
         } catch (error) {
+            console.error("JWT Verify Error:", error.message);
             return res.status(401).json({ message: 'Token không hợp lệ hoặc đã hết hạn' });
         }
     }
@@ -31,28 +32,19 @@ const authorize = (...roles) => {
 
 const verifyResetToken = async (req, res, next) => {
     try {
-        // Hỗ trợ lấy token từ body, query hoặc params (tránh lỗi req.body undefined trên GET)
         const token = (req.body && req.body.token) || req.query.token || req.params.token;
         
         if (!token) {
             return res.status(400).json({ valid: false, message: "Không tìm thấy token yêu cầu" });
         }
 
-        const pool = await sql.connect(config);
-        const request = pool.request();
-        request.input("ResetToken", sql.NVarChar, token);
-        
-        const result = await request.query(`
+        const result = await pool.query(`
             SELECT token_id, user_id, expires_at, used
-            FROM PasswordResetTokens
-            WHERE reset_token = @ResetToken
-        `);
+            FROM "PasswordResetTokens"
+            WHERE reset_token = $1
+        `, [token]);
 
-        if (!result || !result.recordset) {
-            return res.status(500).json({ valid: false, message: "Lỗi truy vấn cơ sở dữ liệu" });
-        }
-
-        const tokenRecord = result.recordset[0];
+        const tokenRecord = result.rows[0];
 
         if (!tokenRecord) {
             return res.status(400).json({ valid: false, message: "Link đặt lại mật khẩu không tồn tại hoặc đã hết hạn (15 phút)." });
