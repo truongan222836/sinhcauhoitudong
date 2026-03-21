@@ -49,27 +49,19 @@ async function callGeminiRaw(prompt, apiKey) {
     }
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
+        const modelName = GEMINI_MODEL || "gemini-1.5-flash";
+        const model = genAI.getGenerativeModel({ model: modelName });
         
-        // Debug: List available models
-        try {
-            const models = await genAI.listModels();
-            console.log(`[AI-SERVICE][GEMINI] Available Models: ${JSON.stringify(models.map(m => m.name))}`);
-        } catch (listErr) {
-            console.warn(`[AI-SERVICE][GEMINI] Could not list models: ${listErr.message}`);
-        }
-
-        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-        
-        console.log(`[AI-SERVICE][GEMINI] Requesting model via SDK: ${GEMINI_MODEL}`);
+        console.log(`[AI-SERVICE][GEMINI] Requesting model: ${modelName}`);
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const resultText = response.text();
         
-        console.log(`[AI-SERVICE] Gemini Raw Content (first 100): ${resultText ? resultText.substring(0, 100) : 'EMPTY'}`);
+        console.log(`[AI-SERVICE] Gemini Success! Length: ${resultText ? resultText.length : 0}`);
         const parsed = JSON.parse(cleanJsonString(resultText));
         return Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
     } catch (error) {
-        console.error(`[AI-SERVICE] Gemini SDK Error: ${error.message}`);
+        console.error(`[AI-SERVICE] Gemini Error: ${error.message}`);
         return null;
     }
 }
