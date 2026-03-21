@@ -48,7 +48,7 @@ async function callGeminiRaw(prompt, apiKey) {
         return null;
     }
     try {
-        const genAI = new GoogleGenerativeAI(apiKey);
+        const genAI = new GoogleGenerativeAI(apiKey, GEMINI_API_VERSION);
         const modelName = GEMINI_MODEL || "gemini-1.5-flash";
         const model = genAI.getGenerativeModel({ model: modelName });
         
