@@ -12,6 +12,7 @@ const GEMINI_API_VERSION = 'v1';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
+const PRIMARY_AI_ORDER = process.env.PRIMARY_AI || 'openai,gemini,groq,ollama';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -124,7 +125,7 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
     let allPassedQuestions = [];
     let existingNorms = [];
     const totalBatches = Math.ceil(quantity / BATCH_SIZE);
-    const providersInOrder = (process.env.PRIMARY_AI || 'gemini,openai,groq,ollama').split(',').map(s => s.trim().toLowerCase());
+    const providersInOrder = PRIMARY_AI_ORDER.split(',').map(s => s.trim().toLowerCase());
 
     for (let i = 0; i < totalBatches; i++) {
         if (onProgress) onProgress(Math.round((i / totalBatches) * 100));
@@ -147,7 +148,12 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
                         }
                         result = await callGemini(prompt, process.env.GEMINI_API_KEY);
                     }
-                    else if (provider === 'openai') result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
+                    else if (provider === 'openai') {
+                        if (!process.env.OPENAI_API_KEY) {
+                            console.warn('[AI-SERVICE] OPENAI_API_KEY is missing');
+                        }
+                        result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
+                    }
                     else if (provider === 'groq') result = await callGroq(prompt, process.env.GROQ_API_KEY);
                     else if (provider === 'ollama') result = await callOllama(prompt);
 
