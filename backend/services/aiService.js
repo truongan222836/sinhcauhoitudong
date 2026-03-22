@@ -1,6 +1,7 @@
 const axios = require("axios");
 const Bottleneck = require("bottleneck");
 const { runPipeline } = require('./questionPipeline');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Giới hạn call API
 const geminiLimiter = new Bottleneck({ minTime: 6000, maxConcurrent: 1 });
@@ -8,9 +9,11 @@ const openaiLimiter = new Bottleneck({ minTime: 1000, maxConcurrent: 1 });
 const groqLimiter = new Bottleneck({ minTime: 2000, maxConcurrent: 1 });
 
 const GEMINI_MODEL = 'gemini-1.5-flash'; 
+const GEMINI_API_VERSION = 'v1beta';
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434/api/generate';
+const PRIMARY_AI_ORDER = process.env.PRIMARY_AI || 'openai,gemini,groq,ollama';
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -40,24 +43,25 @@ Vietnamese language only. No generic content.`;
 
 // ── GEMINI CALLER ──────────────────────────────────────────────
 async function callGeminiRaw(prompt, apiKey) {
-    if (!apiKey || apiKey.includes('xxx')) return null;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+    if (!apiKey || apiKey.includes('xxx')) {
+        console.warn('[AI-SERVICE][GEMINI] Invalid or missing API Key');
+        return null;
+    }
     try {
-        const response = await axios.post(url, {
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 2048, responseMimeType: "application/json" }
-        }, { timeout: 60000 });
-
-        const resultText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const genAI = new GoogleGenerativeAI(apiKey, GEMINI_API_VERSION);
+        const modelName = GEMINI_MODEL || "gemini-1.5-flash";
+        const model = genAI.getGenerativeModel({ model: modelName });
+        
+        console.log(`[AI-SERVICE][GEMINI] Requesting model: ${modelName}`);
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const resultText = response.text();
+        
+        console.log(`[AI-SERVICE] Gemini Success! Length: ${resultText ? resultText.length : 0}`);
         const parsed = JSON.parse(cleanJsonString(resultText));
         return Array.isArray(parsed) ? parsed : (parsed.questions || [parsed]);
     } catch (error) {
-        if (error.response && error.response.status === 429) {
-            const err = new Error("GEMINI_429");
-            const match = JSON.stringify(error.response.data).match(/retry in ([\d.]+)s/);
-            err.retryAfter = match ? Math.ceil(parseFloat(match[1])) : 30;
-            throw err;
-        }
+        console.error(`[AI-SERVICE] Gemini Error: ${error.message}`);
         return null;
     }
 }
@@ -65,18 +69,25 @@ const callGemini = geminiLimiter.wrap(callGeminiRaw);
 
 // ── OPENAI CALLER ──────────────────────────────────────────────
 async function callOpenAIRaw(prompt, apiKey) {
-    if (!apiKey || apiKey.includes('xxx')) return null;
+    if (!apiKey || apiKey.includes('xxx')) {
+        console.warn('[AI-SERVICE][OPENAI] Invalid or placeholder API Key');
+        return null;
+    }
     try {
+        const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+        console.log(`[AI-SERVICE][OPENAI] Requesting model: ${model}`);
         const response = await axios.post(OPENAI_URL, {
-            model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+            model: model,
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" }
         }, { headers: { "Authorization": `Bearer ${apiKey}` }, timeout: 45000 });
 
         const parsed = response.data.choices[0].message.content;
+        console.log(`[AI-SERVICE][OPENAI] Raw Response (first 100 char): ${parsed.substring(0, 100)}...`);
         const json = JSON.parse(cleanJsonString(parsed));
         return Array.isArray(json) ? json : (json.questions || json.data || [json]);
     } catch (e) {
+        console.error(`[AI-SERVICE] OpenAI Error: ${e.message}`, e.response?.data || 'No extra data');
         return null;
     }
 }
@@ -121,7 +132,7 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
     let allPassedQuestions = [];
     let existingNorms = [];
     const totalBatches = Math.ceil(quantity / BATCH_SIZE);
-    const providersInOrder = (process.env.PRIMARY_AI || 'gemini,openai,groq,ollama').split(',').map(s => s.trim().toLowerCase());
+    const providersInOrder = PRIMARY_AI_ORDER.split(',').map(s => s.trim().toLowerCase());
 
     for (let i = 0; i < totalBatches; i++) {
         if (onProgress) onProgress(Math.round((i / totalBatches) * 100));
@@ -136,10 +147,21 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
             console.log(`[AI-SERVICE] Batch ${i + 1}/${totalBatches} (lần thử ${attempt + 1})`);
             
             for (const provider of providersInOrder) {
+                console.log(`[AI-SERVICE] Attempting Provider: ${provider.toUpperCase()}`);
                 try {
                     let result = null;
-                    if (provider === 'gemini') result = await callGemini(prompt, process.env.GEMINI_API_KEY);
-                    else if (provider === 'openai') result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
+                    if (provider === 'gemini') {
+                        if (!process.env.GEMINI_API_KEY) {
+                            console.warn('[AI-SERVICE] GEMINI_API_KEY is missing');
+                        }
+                        result = await callGemini(prompt, process.env.GEMINI_API_KEY);
+                    }
+                    else if (provider === 'openai') {
+                        if (!process.env.OPENAI_API_KEY) {
+                            console.warn('[AI-SERVICE] OPENAI_API_KEY is missing');
+                        }
+                        result = await callOpenAI(prompt, process.env.OPENAI_API_KEY);
+                    }
                     else if (provider === 'groq') result = await callGroq(prompt, process.env.GROQ_API_KEY);
                     else if (provider === 'ollama') result = await callOllama(prompt);
 
