@@ -1,7 +1,7 @@
 -- PostgreSQL Schema for AQG System
 
 -- 1. VaiTro
-CREATE TABLE "VaiTro" (
+CREATE TABLE IF NOT EXISTS "VaiTro" (
     "VaiTroId" SERIAL PRIMARY KEY,
     "TenVaiTro" VARCHAR(50) NOT NULL
 );
@@ -13,7 +13,7 @@ INSERT INTO "VaiTro" ("VaiTroId", "TenVaiTro") VALUES
 ON CONFLICT ("VaiTroId") DO NOTHING;
 
 -- 2. NguoiDung
-CREATE TABLE "NguoiDung" (
+CREATE TABLE IF NOT EXISTS "NguoiDung" (
     "NguoiDungId" SERIAL PRIMARY KEY,
     "HoTen" VARCHAR(255) NOT NULL,
     "Email" VARCHAR(255) UNIQUE NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE "NguoiDung" (
 );
 
 -- 3. LoaiCauHoi
-CREATE TABLE "LoaiCauHoi" (
+CREATE TABLE IF NOT EXISTS "LoaiCauHoi" (
     "LoaiId" SERIAL PRIMARY KEY,
     "TenLoai" VARCHAR(50) NOT NULL
 );
@@ -34,14 +34,14 @@ INSERT INTO "LoaiCauHoi" ("LoaiId", "TenLoai") VALUES
 ON CONFLICT ("LoaiId") DO NOTHING;
 
 -- 4. ChuDe
-CREATE TABLE "ChuDe" (
+CREATE TABLE IF NOT EXISTS "ChuDe" (
     "ChuDeId" SERIAL PRIMARY KEY,
     "TenChuDe" VARCHAR(255) NOT NULL,
     "MoTa" TEXT
 );
 
 -- 5. CauHoi
-CREATE TABLE "CauHoi" (
+CREATE TABLE IF NOT EXISTS "CauHoi" (
     "CauHoiId" SERIAL PRIMARY KEY,
     "NoiDung" TEXT NOT NULL,
     "LoaiId" INTEGER REFERENCES "LoaiCauHoi"("LoaiId"),
@@ -52,7 +52,7 @@ CREATE TABLE "CauHoi" (
 );
 
 -- 6. DapAn
-CREATE TABLE "DapAn" (
+CREATE TABLE IF NOT EXISTS "DapAn" (
     "DapAnId" SERIAL PRIMARY KEY,
     "CauHoiId" INTEGER REFERENCES "CauHoi"("CauHoiId") ON DELETE CASCADE,
     "NoiDung" TEXT NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE "DapAn" (
 );
 
 -- 7. DeThi
-CREATE TABLE "DeThi" (
+CREATE TABLE IF NOT EXISTS "DeThi" (
     "DeThiId" SERIAL PRIMARY KEY,
     "TieuDe" VARCHAR(255) NOT NULL,
     "MaDeThi" VARCHAR(20) UNIQUE NOT NULL,
@@ -74,7 +74,7 @@ CREATE TABLE "DeThi" (
 );
 
 -- 8. ChiTietDeThi
-CREATE TABLE "ChiTietDeThi" (
+CREATE TABLE IF NOT EXISTS "ChiTietDeThi" (
     "ChiTietId" SERIAL PRIMARY KEY,
     "DeThiId" INTEGER REFERENCES "DeThi"("DeThiId") ON DELETE CASCADE,
     "CauHoiId" INTEGER REFERENCES "CauHoi"("CauHoiId"),
@@ -82,7 +82,7 @@ CREATE TABLE "ChiTietDeThi" (
 );
 
 -- 9. BaiThi
-CREATE TABLE "BaiThi" (
+CREATE TABLE IF NOT EXISTS "BaiThi" (
     "BaiThiId" SERIAL PRIMARY KEY,
     "DeThiId" INTEGER REFERENCES "DeThi"("DeThiId") ON DELETE CASCADE,
     "NguoiDungId" INTEGER REFERENCES "NguoiDung"("NguoiDungId"),
@@ -98,7 +98,7 @@ CREATE TABLE "BaiThi" (
 );
 
 -- 10. ChiTietBaiThi
-CREATE TABLE "ChiTietBaiThi" (
+CREATE TABLE IF NOT EXISTS "ChiTietBaiThi" (
     "ChiTietBaiThiId" SERIAL PRIMARY KEY,
     "BaiThiId" INTEGER REFERENCES "BaiThi"("BaiThiId") ON DELETE CASCADE,
     "CauHoiId" INTEGER REFERENCES "CauHoi"("CauHoiId"),
@@ -108,7 +108,7 @@ CREATE TABLE "ChiTietBaiThi" (
 );
 
 -- 11. PasswordResetTokens
-CREATE TABLE "PasswordResetTokens" (
+CREATE TABLE IF NOT EXISTS "PasswordResetTokens" (
     "token_id" SERIAL PRIMARY KEY,
     "user_id" INTEGER REFERENCES "NguoiDung"("NguoiDungId") ON DELETE CASCADE,
     "reset_token" VARCHAR(255) NOT NULL,
@@ -117,7 +117,7 @@ CREATE TABLE "PasswordResetTokens" (
 );
 
 -- 12. Notifications
-CREATE TABLE "Notifications" (
+CREATE TABLE IF NOT EXISTS "Notifications" (
     "notification_id" SERIAL PRIMARY KEY,
     "user_id" INTEGER REFERENCES "NguoiDung"("NguoiDungId") ON DELETE CASCADE,
     "title" VARCHAR(255) NOT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE "Notifications" (
 );
 
 -- 13. SupportRequests
-CREATE TABLE "SupportRequests" (
+CREATE TABLE IF NOT EXISTS "SupportRequests" (
     "support_id" SERIAL PRIMARY KEY,
     "user_id" INTEGER REFERENCES "NguoiDung"("NguoiDungId") ON DELETE CASCADE,
     "title" VARCHAR(255) NOT NULL,
@@ -138,7 +138,7 @@ CREATE TABLE "SupportRequests" (
 );
 
 -- 14. GiaHanBaiThi (Extension)
-CREATE TABLE "GiaHanBaiThi" (
+CREATE TABLE IF NOT EXISTS "GiaHanBaiThi" (
     "GiaHanId" SERIAL PRIMARY KEY,
     "DeThiId" INTEGER REFERENCES "DeThi"("DeThiId") ON DELETE CASCADE,
     "MSSV" VARCHAR(50) NOT NULL,
