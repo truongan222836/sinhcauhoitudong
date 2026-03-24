@@ -2,7 +2,7 @@ const OpenAI = require('openai');
 
 // Khởi tạo OpenAI client
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key-here', // Sẽ sử dụng biến môi trường
+  apiKey: process.env.OPENAI_API_KEY, 
 });
 
 /**
@@ -69,7 +69,7 @@ Trả về dưới dạng JSON array với format:
     }
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
