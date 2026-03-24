@@ -2,7 +2,7 @@
 
 # 🚀 LIVE DEMO
 - **Đường link hệ thống:** [https://sinhcauhoitudongaqq.vercel.app/](https://sinhcauhoitudong-ovxm-cdo4lv3uj-truongans-projects-7478d469.vercel.app/)
-- **Tài khoản Admin:** `admin@gmail.com`
+- **Tài khoản Admin:** `admin@example.com`
 - **Mật khẩu:** `123456`
 
 ---
