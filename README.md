@@ -20,6 +20,13 @@ Hệ thống cho phép:
 
 ---
 
+# 🌐 TRUY CẬP WEBSITE ĐÃ DEPLOY
+
+Dự án đã được deploy trên môi trường thực tế. 
+👉 **[Link Website tại đây](#)** *(Thông tin link website sẽ được cập nhật)*
+
+---
+
 # 🧱 2. KIẾN TRÚC HỆ THỐNG
 
 Mô hình:
@@ -35,7 +42,7 @@ Database (SQL Server)
 
 ---
 
-# 🗄️ 3. DATABASE (12 BẢNG)
+# 🗄️ 3. DATABASE (19 BẢNG)
 
 
 ## Nhóm bảng người dùng
@@ -70,6 +77,7 @@ Database (SQL Server)
 
 ---
 
+*(Hệ thống sử dụng tổng cộng 19 bảng bao gồm các bảng cài đặt và mapping dữ liệu để tối ưu hóa việc chấm điểm và quản lý tài liệu.)*
 
 ---
 
