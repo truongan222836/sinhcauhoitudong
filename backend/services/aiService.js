@@ -131,20 +131,24 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
     const BATCH_SIZE = 5;
     let allPassedQuestions = [];
     let existingNorms = [];
-    const totalBatches = Math.ceil(quantity / BATCH_SIZE);
+    let maxIterations = Math.ceil(quantity / BATCH_SIZE) * 3; // Cho phép chạy vòng lặp tối đa gấp 3 lần số lượng batch để bù đắp
+    let currentIteration = 0;
     const providersInOrder = PRIMARY_AI_ORDER.split(',').map(s => s.trim().toLowerCase());
 
-    for (let i = 0; i < totalBatches; i++) {
-        if (onProgress) onProgress(Math.round((i / totalBatches) * 100));
+    while (allPassedQuestions.length < quantity && currentIteration < maxIterations) {
+        if (onProgress) {
+            let progress = Math.round((allPassedQuestions.length / quantity) * 100);
+            if (progress >= 100) progress = 99;
+            onProgress(progress);
+        }
         const currentQty = Math.min(BATCH_SIZE, quantity - allPassedQuestions.length);
-        if (currentQty <= 0) break;
 
         const prompt = getPrompt(text, type, currentQty, difficulty);
         let batchRaw = null;
         let attempt = 0;
 
         while (attempt < 2 && !batchRaw) {
-            console.log(`[AI-SERVICE] Batch ${i + 1}/${totalBatches} (lần thử ${attempt + 1})`);
+            console.log(`[AI-SERVICE] Vòng lặp ${currentIteration + 1} (cần thêm ${currentQty} câu, lần thử ${attempt + 1})`);
             
             for (const provider of providersInOrder) {
                 console.log(`[AI-SERVICE] Attempting Provider: ${provider.toUpperCase()}`);
@@ -188,6 +192,7 @@ exports.generateQuestions = async (text, type, quantity, difficulty = 'Trung bì
             allPassedQuestions = allPassedQuestions.concat(batchPassed);
         }
         await sleep(1000);
+        currentIteration++;
     }
 
     return allPassedQuestions.slice(0, quantity).map((q, index) => {
